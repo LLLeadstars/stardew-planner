@@ -1,0 +1,101 @@
+{
+  "repository": "LLLeadstars/stardew-planner",
+  "map": {
+    "title": "星露谷日程管理器 V1：通往可实施规格的决策地图",
+    "url": "https://github.com/LLLeadstars/stardew-planner/issues/1",
+    "number": 1,
+    "id": 5448802932
+  },
+  "tickets": [
+    {
+      "title": "确定原版数据基线与活动耗时估算的证据",
+      "url": "https://github.com/LLLeadstars/stardew-planner/issues/2",
+      "number": 2,
+      "id": 5448803369,
+      "type": "research"
+    },
+    {
+      "title": "确定首批活动清单、输入参数与提醒边界",
+      "url": "https://github.com/LLLeadstars/stardew-planner/issues/3",
+      "number": 3,
+      "id": 5448803860,
+      "type": "grilling"
+    },
+    {
+      "title": "确定游戏日与时间衔接的完整语义",
+      "url": "https://github.com/LLLeadstars/stardew-planner/issues/4",
+      "number": 4,
+      "id": 5448804542,
+      "type": "grilling"
+    },
+    {
+      "title": "确定长期目标、完成状态与每日记录的边界",
+      "url": "https://github.com/LLLeadstars/stardew-planner/issues/5",
+      "number": 5,
+      "id": 5448805212,
+      "type": "grilling"
+    },
+    {
+      "title": "验证电脑端规划主流程与编辑交互",
+      "url": "https://github.com/LLLeadstars/stardew-planner/issues/6",
+      "number": 6,
+      "id": 5448805800,
+      "type": "prototype"
+    },
+    {
+      "title": "确定本地保存、备份恢复与技术架构",
+      "url": "https://github.com/LLLeadstars/stardew-planner/issues/7",
+      "number": 7,
+      "id": 5448806228,
+      "type": "grilling"
+    },
+    {
+      "number": 8,
+      "id": 5448866676,
+      "title": "确定原版版本与单人/多人支持边界",
+      "url": "https://github.com/LLLeadstars/stardew-planner/issues/8",
+      "type": "grilling"
+    }
+  ],
+  "verified": true,
+  "dependencies": [
+    {
+      "blocker": 0,
+      "child": 1
+    },
+    {
+      "blocker": 1,
+      "child": 4
+    },
+    {
+      "blocker": 2,
+      "child": 4
+    },
+    {
+      "blocker": 3,
+      "child": 4
+    },
+    {
+      "blocker": 4,
+      "child": 5
+    },
+    {
+      "child": 6,
+      "blocker": 0
+    },
+    {
+      "child": 1,
+      "blocker": 6
+    },
+    {
+      "child": 2,
+      "blocker": 6
+    }
+  ],
+  "researchResolution": {
+    "artifactUrl": "https://github.com/LLLeadstars/stardew-planner/blob/b0476215e28f4e55545c2d3f332758bb8e80b347/docs/research/stardew-v1-data-and-time.md",
+    "commit": "b0476215e28f4e55545c2d3f332758bb8e80b347",
+    "state": "closed",
+    "issue": 2
+  }
+}
