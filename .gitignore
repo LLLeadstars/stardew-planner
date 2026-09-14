@@ -1,3 +1,50 @@
-# Installed skill contents
+# =========================
+# AI agent installed skills
+# =========================
+
 .agents/skills/
 .claude/skills/
+
+# =========================
+# Local AI / agent state
+# =========================
+
+.agent-cache/
+.cache/
+.tmp/
+
+# 如果 .scratch 只是本地临时 ticket / 草稿目录，可以忽略
+.scratch/
+
+# =========================
+# Environment / secrets
+# =========================
+
+.env
+.env.local
+.env.*.local
+
+# =========================
+# OS / editor
+# =========================
+
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/
+
+# =========================
+# Logs
+# =========================
+
+*.log
+
+# =========================
+# Build / dependency output
+# =========================
+
+node_modules/
+dist/
+build/
+coverage/
