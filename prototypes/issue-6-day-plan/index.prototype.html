@@ -418,80 +418,140 @@ function overrun() {
     .map(x => ({ a: x.a, over: x.r.e - DAY_END }));
 }
 
-// 门店状态：三色 + 条件性交易窗口。依据 #3 结论与 docs/research/stardew-shop-exception-windows.md
+/* =====================================================================================
+   门店判定：**建筑可进入** 与 **服务可用** 必须分开保存（#12 结论）。
+   依据 docs/research/stardew-shop-matrix-1.6.15.md（核验日期 2026-09-18）。
+   未完成实机复现的边界一律返回 unknown，不伪造成确定结论。
+   ===================================================================================== */
+const SPECIAL_DAYS = {
+  none: '无',
+  festival: '普通节日（白天型）',
+  eveningFestival: '晚间／特殊节日（例外）',
+  desertFestival: '沙漠节（春 15–17）',
+};
+const SHOP_SRC = '研究材料 · 门店矩阵（社区 Wiki 固定修订）';
+const SHOP_CONF = '中等；待 PC 原版 1.6.15 实机回归';
+
 function shopStatus(id, date) {
-  const wd = weekdayOf(date), w = state.weather, ps = state.playerState;
-  const val = k => ps[k].value;
+  const wd = weekdayOf(date), w = state.weather, sp = state.specialDay;
+  const val = k => state.playerState[k].value;
+  const cc = val('communityCenter'), key = val('keyToTown');
   const rules = [];
-  const add = (text, applies, src, conf) => rules.push({ text, applies, src: src || '研究材料 · 固定修订', conf: conf || '中等（社区 Wiki，待实机校准）' });
-  let level = 'ok', headline = '', windows = [];
+  const add = (text, applies, src, conf) => rules.push({ text, applies, src: src || SHOP_SRC, conf: conf || SHOP_CONF });
+  const OPEN = (s, e, headline) => ({ level: 'ok', headline, windows: [{ s, e, kind: 'ok' }] });
+  const SHUT = (headline, windows) => ({ level: 'closed', headline, windows: windows || [] });
+  const UNK = (headline, windows) => ({ level: 'unknown', headline, windows: windows || [] });
   const S = SHOPS[id];
+  const isSpring16 = date.season === 0 && date.day === 16;
+  const isSummer18 = date.season === 1 && date.day === 18;
+  const isWinter16 = date.season === 3 && date.day === 16;
+  const y1GreenRain = w === 'greenRain' && state.currentGameDay.year === 1;
+  let access, service;
 
   if (id === 'pierre') {
-    add('常规营业 09:00–17:00', true, '待 #12 核验完整矩阵', '待核验');
-    windows = [{ s: S.base.s, e: S.base.e, kind: 'ok' }];
-    headline = '常规营业';
+    add('建筑通常 09:00–21:00 可进', true);
+    add('常规交易 09:00–17:00；皮埃尔离开柜台后不能买卖', true);
+    add('周三通常不可进；社区中心全部完成**或持有城镇钥匙**后周三也开放', true);
+    add('周二 13:00–16:00 健身操占用店内空间，但不等同于交易关闭', true);
+
+    // 周三开放条件：社区中心完成 或 持有城镇钥匙（两者皆未定则保持未知）
+    let wedOk = true, wedUnknown = false;
     if (wd === 2) {
-      if (val('communityCenter') === 'restored') { headline = '周三照常营业（社区中心已修复）'; add('社区中心修复后周三恢复营业', true); }
-      else if (val('communityCenter') === 'notRestored') {
-        level = 'closed'; windows = []; headline = '今日休息';
-        add('社区中心未修复时周三休息', true);
-      } else {
-        level = 'unknown'; windows = []; headline = '暂按不可用';
-        add('社区中心状态未知，无法判断周三是否营业', true);
-      }
+      if (cc === 'restored' || key === 'yes') wedOk = true;
+      else if (cc === 'notRestored' && key === 'no') wedOk = false;
+      else wedUnknown = true;
     }
-    if (state.specialDay === 'festival') { level = 'closed'; windows = []; headline = '节日不可进入'; add('节日建筑不可进入，城镇钥匙也不生效', true); }
+
+    if (sp === 'festival') {
+      add('节日通常关闭；沙漠节、鳟鱼赛、鱿鱼节、夜市为资料列出的例外', true);
+      access = SHUT('节日不可进入'); service = SHUT('节日关闭');
+    } else if (sp === 'eveningFestival' || sp === 'desertFestival') {
+      add(sp === 'desertFestival' ? '沙漠节属于资料列出的例外，需按当天实际复核' : '晚间或特殊节日属于资料列出的例外，需复核', true);
+      access = UNK('特殊节日例外，需复核'); service = UNK('特殊节日例外，需复核');
+    } else if (wd === 2 && wedUnknown) {
+      add('社区中心状态与城镇钥匙均未确定，周三是否开放保持未知', true);
+      access = UNK('暂按不可进（周三条件未知）'); service = UNK('暂按不可用（周三条件未知）');
+    } else if (wd === 2 && !wedOk) {
+      add('社区中心未完成且无城镇钥匙：周三不开放', true);
+      access = SHUT('周三不可进'); service = SHUT('周三休息');
+    } else {
+      access = OPEN(540, 1260, wd === 2 ? '周三开放 · 可进 09:00–21:00' : '可进 09:00–21:00');
+      service = OPEN(S.base.s, S.base.e, wd === 2 ? '周三可交易 09:00–17:00' : '可交易 09:00–17:00');
+    }
   }
 
   if (id === 'robin') {
-    add('常规营业 09:00–17:00', true);
-    windows = [{ s: S.base.s, e: S.base.e, kind: 'ok' }]; headline = '常规营业';
-    if (state.specialDay === 'festival') { level = 'closed'; windows = []; headline = '节日不可进入'; add('多数节日建筑不可进入', true); }
-    else if (val('robinBuilding') === 'yes') { level = 'closed'; windows = []; headline = '全天关闭（罗宾正在农场施工）'; add('罗宾正在农场施工时全天关店，柜台技巧不可用', true); }
-    else if (wd === 1) {
-      if (w === 'rain') { level = 'ok'; windows = [{ s: S.base.s, e: S.base.e, kind: 'ok' }]; headline = '雨天照常营业 09:00–17:00'; add('普通下雨的周二：雨天日程优先，商店按普通时段营业', true); }
-      else if (w === 'unknown') { level = 'unknown'; windows = []; headline = '暂按休息（天气未知，周二例外无法判断）'; add('普通周二与雨天例外的判定依赖天气', true); }
+    add('房屋通常 09:00–20:00 可进，**即使商店关闭**', true);
+    add('常规服务 09:00–17:00；**周五 16:00 关店**', true);
+    add('周二正式关闭，普通雨天照常', true);
+    add('罗宾在农场施工时全天关店', true);
+    add('夏 18 日诊所行程关闭，但约 17:50 经过柜台可能交易', true);
+    add('条件性交易窗口：约 09:40 与约 20:00 罗宾经过柜台（约时、瞬时、可尝试）', true, '研究材料 · 固定修订 + 官方论坛玩家复现', '低至中等');
+    add('瞬时机会不写成固定的 10 分钟营业段', true);
+
+    const tips = [];
+    if (sp === 'festival') service = SHUT('节日关闭');
+    else if (sp === 'eveningFestival') service = UNK('晚间或特殊节日：资料列为例外，需复核');
+    else if (sp === 'desertFestival') service = UNK('沙漠节：需按当天实际复核');
+    else if (val('robinBuilding') === 'yes') {
+      add('罗宾正在农场施工时全天关店，柜台技巧不可用', true);
+      service = SHUT('全天关闭（罗宾正在农场施工）');
+    } else if (isSummer18) {
+      add('夏 18 日诊所行程：正式服务关闭，但约 17:50 可能有瞬时交易机会', true);
+      service = SHUT('夏 18 日：罗宾诊所行程，正式关闭', [{ s: 1070, e: 1080, kind: 'tip', label: '约 17:50 罗宾经过柜台，可尝试交易' }]);
+    } else if (wd === 1) {
+      if (w === 'rain') service = OPEN(S.base.s, S.base.e, '雨天照常 09:00–17:00');
+      else if (w === 'unknown') service = UNK('暂按休息（天气未知，周二例外无法判断）');
       else {
-        level = 'closed'; windows = [{ s: 580, e: 590, kind: 'tip', label: '约 9:40 在柜台等候，罗宾经过时可尝试交易' }];
-        headline = '今日休息（周二）';
-        add('普通周二正式休息', true);
-        add('条件性交易窗口：约 9:40 罗宾前往皮埃尔途中经过柜台，可短暂交易（约时、瞬时、可尝试）', true, '研究材料 · 固定修订 + 官方论坛玩家复现', '低至中等');
-        add('次要技巧：约 20:00 罗宾回家经过柜台，依赖返程与进门时机', true, '研究材料 · 固定修订', '低至中等');
-        add('约 9:40 的早间机会不要求城镇钥匙（房屋 9:00 通常已可进入）', true);
-        if (val('resortUnlocked') === 'yes') { level = 'unknown'; headline = '暂按不可用（罗宾周二可能前往姜岛度假村）'; add('度假村已解锁但当天是否出行未知，普通周二路线不再可靠', true); }
+        const t2 = [
+          { s: 580, e: 590, kind: 'tip', label: '约 9:40 在柜台等候，罗宾经过时可尝试交易' },
+          { s: 1200, e: 1210, kind: 'tip', label: '约 20:00 罗宾回家经过柜台（次要技巧）' },
+        ];
+        service = val('resortUnlocked') === 'yes'
+          ? UNK('暂按不可用（罗宾周二可能前往姜岛度假村）', t2)
+          : SHUT('今日休息（周二）', t2);
+        if (val('resortUnlocked') === 'yes') add('度假村已解锁但当天是否出行未知，普通周二路线不再可靠', true);
         else add('姜岛度假村未解锁，周二随机分支不适用', false);
       }
+    } else {
+      service = wd === 4 ? OPEN(S.base.s, 960, '周五 09:00–16:00（16:00 关店）')
+                         : OPEN(S.base.s, S.base.e, '常规服务 09:00–17:00');
     }
-    if (val('keyToTown') === 'yes' && level !== 'ok') add('城镇钥匙只改变能否在锁门时进入建筑，不改变罗宾是否在柜台附近', true);
+    access = sp === 'festival' ? SHUT('节日不可进入') : OPEN(540, 1200, '可进 09:00–20:00');
   }
 
   if (id === 'clint') {
-    add('常规办理 09:00–16:00', true);
-    windows = [{ s: S.base.s, e: S.base.e, kind: 'ok' }]; headline = '可办理 09:00–16:00';
-    if (state.specialDay === 'festival') {
-      level = 'closed'; windows = []; headline = '节日关闭；升级进度不暂停';
-      add('白天型节日导致商店关闭，但加工倒计时继续', true);
-    } else if (date.season === 3 && date.day === 16) {
-      level = 'unknown'; windows = [{ s: 540, e: 630, kind: 'warn' }];
-      headline = '冬 16 日：10:30 前办理';
-      add('冬 16 日 Clint 约 10:30 后离店', true);
-    } else if (wd === 4 && val('communityCenter') === 'restored') {
-      if (w === 'rain') { level = 'ok'; windows = [{ s: S.base.s, e: S.base.e, kind: 'ok' }]; headline = '周五雨天照常办理 09:00–16:00'; add('社区中心修复后的周五，下雨时照常办理', true); }
-      else if (w === 'unknown') { level = 'unknown'; windows = []; headline = '暂按不可用（天气未知）'; add('周五例外依赖天气', true); }
-      else { level = 'closed'; windows = []; headline = 'Clint 不在店内（社区中心修复后周五，非雨天）'; add('社区中心修复后的周五非雨天不可办理', true); }
-    } else if (wd === 4 && val('communityCenter') === 'unknown') {
-      level = 'unknown'; windows = []; headline = '暂按不可用（社区中心状态未知）'; add('周五例外依赖社区中心状态', true);
-    }
-    if (w === 'greenRain' && state.currentGameDay.year === 1) { level = 'closed'; windows = []; headline = '第 1 年绿雨：Clint 不在店内'; add('第 1 年绿雨日 Clint 前往酒吧', true); }
+    add('常规办理 09:00–16:00；工具升级、取回、晶球处理共用柜台可用性', true);
+    add('建筑门与服务柜台分别判断；建筑进门的独立时段资料未给出，暂按服务时段', true, SHOP_SRC, '资料未覆盖');
+    add('城镇钥匙只影响进门，不把服务变为可用', true);
+    add('社区中心修复后周五 Clint 不在店，雨天例外', true);
+    add('冬 16 日 10:30 离店；第 1 年绿雨日离店；春 16 日与沙漠节可能离店', true);
+    add('姜岛度假村解锁后周五可能随机前往', true);
+    add('节日通常关闭，但加工倒计时继续', true);
     add('技巧：16:00 前已进入店内时可能可继续办理（待实机确认具体截止点）', true, '研究材料 · Wiki 称门 16:00 锁', '待实机校准');
-    if (val('resortUnlocked') === 'yes') add('姜岛度假村已开放：Clint 可能随机在周五离店，未来日期无法静态确定', true, '研究材料 · 黄色「可能离店」');
-    add('城镇钥匙只能改变进门限制，不能保证 Clint 在柜台', true);
+
+    const resort = val('resortUnlocked') === 'yes';
+    if (sp === 'festival') { add('白天型节日导致商店关闭，但加工倒计时继续', true); service = SHUT('节日关闭；升级进度不暂停'); }
+    else if (sp === 'eveningFestival') service = UNK('晚间或特殊节日：需复核');
+    else if (sp === 'desertFestival') { add('沙漠节期间 Clint 可能作为节日商贩离店', true); service = UNK('沙漠节：Clint 可能离店'); }
+    else if (isWinter16) { add('冬 16 日 Clint 约 10:30 后离店', true); service = { level: 'unknown', headline: '冬 16 日：10:30 前办理', windows: [{ s: 540, e: 630, kind: 'warn' }] }; }
+    else if (y1GreenRain) { add('第 1 年绿雨日 Clint 前往酒吧', true); service = SHUT('第 1 年绿雨：Clint 不在店内'); }
+    else if (isSpring16) { add('春 16 日 Clint 可能离店（依赖巴士修复与商贩轮值）', true); service = UNK('春 16 日：Clint 可能离店'); }
+    else if (wd === 4) {
+      if (cc === 'restored' && w === 'rain') service = resort ? UNK('周五雨天照常，但 Clint 可能前往姜岛度假村') : OPEN(S.base.s, S.base.e, '周五雨天照常 09:00–16:00');
+      else if (cc === 'restored' && w === 'unknown') service = UNK('暂按不可用（天气未知）');
+      else if (cc === 'restored') service = SHUT('Clint 不在店内（社区中心修复后周五，非雨天）');
+      else if (cc === 'unknown') service = UNK('暂按不可用（社区中心状态未知）');
+      else if (resort) service = UNK('周五：Clint 可能前往姜岛度假村');
+      else service = OPEN(S.base.s, S.base.e, '可办理 09:00–16:00');
+    } else service = OPEN(S.base.s, S.base.e, '可办理 09:00–16:00');
+    access = OPEN(S.base.s, S.base.e, '可进 09:00–16:00');
   }
 
-  const hasTip = windows.some(x => x.kind === 'tip' || x.kind === 'warn');
-  return { level, headline, windows, rules, hasTip };
+  const hasTip = service.windows.some(x => x.kind === 'tip' || x.kind === 'warn');
+  return { access, service, rules, hasTip };
 }
+
 
 // 工具升级流程：从「已完成的交付 / 取回活动」派生，不物化存储。
 // 物化会让「取消完成」留下错误状态（工具仍是铜级、仍标已取回）；派生则天然回到原状态。
@@ -523,7 +583,7 @@ function upgradeInfo(date) {
   const isDone = cmpDate(date, done) >= 0;
   const status = u.taken ? '已取回' : isDone ? '待取回' : '升级中';
   const clint = shopStatus('clint', date);
-  const earliest = clint.level === 'ok' ? date : null;
+  const earliest = clint.service.level === 'ok' ? date : null;   // 能办理才算可取回
   return { u, done, status, clint, earliest, mat: UPGRADE[u.to].mat, fee: u.tool === 'trash' ? UPGRADE[u.to].fee / 2 : UPGRADE[u.to].fee };
 }
 function upgradePreview(tool, to) {
@@ -569,7 +629,7 @@ function conclude(a) {
     const p = priorityDuration(a.type);
     return { kind: 'time', minutes: p.minutes, text: '降级为按时间预留 ' + fmtDur(p.minutes) + '（' + e.reasons.join('；') + '）' };
   }
-  if (a.type === 'shop') return { kind: 'text', text: SHOPS[a.shop].name + '：' + shopStatus(a.shop, state.viewingDay).headline };
+  if (a.type === 'shop') { const st = shopStatus(a.shop, state.viewingDay); return { kind: 'text', text: SHOPS[a.shop].name + '：可进 ' + st.access.headline + '／可交易 ' + st.service.headline }; }
   if (a.type === 'toolTake') {
     const u = upgradeInfo(state.viewingDay);
     return { kind: 'text', text: u ? '柜台：' + u.clint.headline : '（当前无升级流程）' };
@@ -782,14 +842,20 @@ function upgradeRefHtml(a) {
     '<div class="hint">不追踪玩家背包材料或金钱余额；材料与费用仅为参考。</div>';
 }
 
+function shopDimHtml(label, dim) {
+  const cls = dim.level === 'ok' ? 'ok' : dim.level === 'closed' ? 'bad' : 'warn';
+  let h = '<div class="row" style="gap:6px;align-items:flex-start"><span class="k meta" style="width:48px;flex:none;padding-top:2px">' + label + '</span>' +
+    '<span class="row wrap" style="flex:1"><span class="chip ' + cls + '">' + esc(dim.headline) + '</span>' +
+    dim.windows.map(w => '<span class="chip ' + (w.kind === 'ok' ? 'ok' : w.kind === 'warn' ? 'warn' : 'info') + '">' +
+      (w.kind === 'ok' ? '' : w.kind === 'warn' ? '条件可用 ' : '技巧 ') + fmtT(w.s) + '–' + fmtT(w.e) + (w.label ? ' · ' + esc(w.label) : '') + '</span>').join('') +
+    '</span></div>';
+  return h;
+}
 function shopCardHtml(id, st, withRules) {
-  const cls = st.level === 'ok' ? 'ok' : st.level === 'closed' ? 'bad' : 'warn';
-  const word = st.level === 'ok' ? '营业' : st.level === 'closed' ? '关闭' : '未知';
-  let h = '<div class="panelbox" style="margin:6px 0"><div class="cardhead"><span class="t">' + SHOPS[id].name + '</span><span class="chip ' + cls + '">' + esc(st.headline) + '</span></div>';
-  if (st.windows.length) {
-    h += '<div class="row wrap">' + st.windows.map(w => '<span class="chip ' + (w.kind === 'ok' ? 'ok' : w.kind === 'warn' ? 'warn' : 'info') + '">' +
-      (w.kind === 'ok' ? '确认可交易 ' : w.kind === 'warn' ? '条件可用 ' : '技巧 ') + fmtT(w.s) + '–' + fmtT(w.e) + (w.label ? ' · ' + esc(w.label) : '') + '</span>').join('') + '</div>';
-  } else h += '<div class="meta">无可用时段</div>';
+  let h = '<div class="panelbox" style="margin:6px 0"><div class="cardhead"><span class="t">' + SHOPS[id].name + '</span>' +
+    '<span class="meta">可进入 与 可交易 分开判断</span></div>';
+  h += shopDimHtml('可进入', st.access);
+  h += shopDimHtml('可交易', st.service);
   if (withRules) {
     h += '<h4>规则与来源</h4><ul class="rulelist">' + st.rules.map(r => '<li class="' + (r.applies ? '' : 'na') + '">' + esc(r.text) +
       '<div class="r">来源：' + esc(r.src) + ' · 可信度：' + esc(r.conf) + ' · 适用 ' + RULESET + '</div></li>').join('') + '</ul>';
@@ -881,7 +947,8 @@ function renderTopbar() {
       '<span class="tbgroup"><span class="k">模式</span><select data-global="mode"><option value="single"' + (state.mode === 'single' ? ' selected' : '') + '>单人</option><option value="multi"' + (state.mode === 'multi' ? ' selected' : '') + '>多人（手动预留）</option></select></span>' +
       '<span class="tbgroup"><span class="k">天气</span><select data-global="weather">' +
       ['sunny|晴朗', 'rain|下雨', 'greenRain|绿雨', 'unknown|未知'].map(x => { const p = x.split('|'); return '<option value="' + p[0] + '"' + (state.weather === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select></span>' +
-      '<span class="tbgroup"><span class="k">特殊日</span><select data-global="specialDay"><option value="none"' + (state.specialDay === 'none' ? ' selected' : '') + '>无</option><option value="festival"' + (state.specialDay === 'festival' ? ' selected' : '') + '>节日</option></select></span>') +
+      '<span class="tbgroup"><span class="k">特殊日</span><select data-global="specialDay">' +
+        Object.keys(SPECIAL_DAYS).map(k => '<option value="' + k + '"' + (state.specialDay === k ? ' selected' : '') + '>' + SPECIAL_DAYS[k] + '</option>').join('') + '</select></span>') +
     '<span class="chip mute">' + RULESET + '</span>' +
     '<span class="tbsep"></span>' +
     '<span class="tbgroup"><button data-act="panel" data-p="state">玩家状态 ' + Object.keys(STATE_DEFS).filter(k => state.playerState[k].value !== STATE_DEFS[k].def).length + '</button>' +
@@ -1222,10 +1289,10 @@ function stateEffect(key) {
     case 'communityCenter': {
       const shops = acts.filter(a => a.type === 'shop');
       if (!shops.length) return n + ' 项交付／取回受它影响';
-      return shops.map(a => SHOPS[a.shop].name + '：' + shopStatus(a.shop, state.viewingDay).headline).join('；');
+      return shops.map(a => SHOPS[a.shop].name + '：' + shopStatus(a.shop, state.viewingDay).service.headline).join('；');
     }
     case 'robinBuilding':
-      return '木匠商店：' + shopStatus('robin', state.viewingDay).headline;
+      return '木匠商店：' + shopStatus('robin', state.viewingDay).service.headline;
     case 'resortUnlocked':
       return n ? n + ' 项的随机分支（可能离店，无法静态确定）' : '本日不涉及';
     case 'keyToTown':
@@ -1260,7 +1327,7 @@ function leftInfoHtml(conflicts, over) {
     '<div class="fstate"><div class="ftop"><span>模式</span><select data-global="mode">' + dd({ single: '单人', multi: '多人' }, state.mode) + '</select></div>' +
       (state.mode === 'multi' ? '<div class="fnote">多人下浇水不提供系统估算，一律按时间预留</div>' : '') + '</div>' +
     '<div class="fstate"><div class="ftop"><span>天气</span><select data-global="weather">' + dd({ sunny: '晴朗', rain: '下雨', greenRain: '绿雨', unknown: '未知' }, state.weather) + '</select></div></div>' +
-    '<div class="fstate"><div class="ftop"><span>特殊日</span><select data-global="specialDay">' + dd({ none: '无', festival: '节日' }, state.specialDay) + '</select></div></div>' +
+    '<div class="fstate"><div class="ftop"><span>特殊日</span><select data-global="specialDay">' + dd(SPECIAL_DAYS, state.specialDay) + '</select></div></div>' +
     '</div>';
 
   h += '<div class="blk"><h5>影响本日的玩家状态</h5>';
@@ -1281,8 +1348,10 @@ function leftInfoHtml(conflicts, over) {
   if (shopsToday.length) {
     for (const s of shopsToday) {
       const st2 = shopStatus(s, state.viewingDay);
-      const cls = st2.level === 'ok' ? 'ok' : st2.level === 'closed' ? 'bad' : 'warn';
-      h += '<div class="fstate"><div class="ftop"><span>' + SHOPS[s].name + '</span><span class="chip ' + cls + '">' + esc(st2.headline) + '</span></div></div>';
+      // 「建筑可进入」与「服务可用」分开呈现——这正是 #12 的结构性要求
+      h += '<div class="fstate"><div class="ftop"><span>' + SHOPS[s].name + '</span></div>' +
+        '<div class="fnote">可进入：' + esc(st2.access.headline) + '</div>' +
+        '<div class="fnote">可交易：' + esc(st2.service.headline) + '</div></div>';
     }
   } else h += '<div class="fnote">本日没有门店活动。</div>';
   const notes = [];

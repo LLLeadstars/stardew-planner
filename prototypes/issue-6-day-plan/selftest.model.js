@@ -91,30 +91,84 @@ ok('手填 90 分的木匠店来源=手填', M.actTime(shop).source==='manual' &
 const doneAct = S().activities.find(x=>x.done);
 ok('已完成记录被保留', !!doneAct && doneAct.doneDate==='1-0-3', doneAct&&doneAct.doneDate);
 
-/* 门店三色判定 */
-S().weather='sunny'; S().playerState.communityCenter.value='unknown';
-ok('春3（周三）木匠店=常规营业', M.shopStatus('robin',{year:1,season:0,day:3}).level==='ok');
-let st = M.shopStatus('robin',{year:1,season:0,day:2});
-ok('春2（周二）木匠店=休息 + 黄色技巧窗口', st.level==='closed' && st.windows.some(x=>x.kind==='tip'), st.headline);
-ok('周二技巧不把整段标绿', !st.windows.some(x=>x.kind==='ok'));
-S().weather='rain';
-st = M.shopStatus('robin',{year:1,season:0,day:2});
-ok('周二下雨=绿色 09:00–17:00', st.level==='ok' && st.windows[0].s===540 && st.windows[0].e===1020, st.headline);
-S().weather='sunny';
-S().playerState.communityCenter.value='unknown';
-st = M.shopStatus('pierre',{year:1,season:0,day:3});
-ok('周三皮埃尔 + 社区中心未知 = 黄色未知', st.level==='unknown', st.headline);
-S().playerState.communityCenter.value='notRestored';
-ok('周三皮埃尔 + 未修复 = 红色休息', M.shopStatus('pierre',{year:1,season:0,day:3}).level==='closed');
-S().playerState.robinBuilding.value='yes';
-ok('罗宾施工中 = 木匠店全天关闭且无技巧', (()=>{const s=M.shopStatus('robin',{year:1,season:0,day:3}); return s.level==='closed' && !s.hasTip;})());
-S().playerState.robinBuilding.value='no';
-ok('冬16 铁匠铺 = 10:30 前办理', M.shopStatus('clint',{year:1,season:3,day:16}).windows[0].e===630);
-S().playerState.communityCenter.value='restored'; S().weather='sunny';
-ok('社区中心已修复 + 周五晴 = Clint 不在店内', M.shopStatus('clint',{year:1,season:0,day:5}).level==='closed');
-S().weather='rain';
-ok('社区中心已修复 + 周五雨 = 照常办理', M.shopStatus('clint',{year:1,season:0,day:5}).level==='ok');
-S().weather='sunny';
+/* ===== 门店判定：建筑可进入 与 服务可用 分开（#12 结论，依据门店矩阵 2026-09-18） ===== */
+const D3 = { year: 1, season: 0, day: 3 };   // 春3 = 周三
+const D2 = { year: 1, season: 0, day: 2 };   // 春2 = 周二
+const D5 = { year: 1, season: 0, day: 5 };   // 春5 = 周五
+const reset = () => { M.seedScenario('fresh'); S().weather = 'sunny'; S().specialDay = 'none'; };
+
+// 皮埃尔：周三的开放条件是「社区中心完成 或 持有城镇钥匙」——钥匙分支是 #12 新增的规则
+reset(); S().playerState.communityCenter.value = 'unknown'; S().playerState.keyToTown.value = 'unknown';
+ok('皮埃尔周三：社区中心与钥匙都未知 → 保持未知', M.shopStatus('pierre', D3).service.level === 'unknown');
+reset(); S().playerState.communityCenter.value = 'notRestored'; S().playerState.keyToTown.value = 'no';
+ok('皮埃尔周三：未修复且无钥匙 → 不可用', M.shopStatus('pierre', D3).service.level === 'closed');
+reset(); S().playerState.communityCenter.value = 'restored'; S().playerState.keyToTown.value = 'no';
+ok('皮埃尔周三：社区中心完成 → 可用', M.shopStatus('pierre', D3).service.level === 'ok');
+reset(); S().playerState.communityCenter.value = 'notRestored'; S().playerState.keyToTown.value = 'yes';
+ok('皮埃尔周三：未修复但**持有城镇钥匙** → 可用（#12 修复的规则错误）', M.shopStatus('pierre', D3).service.level === 'ok');
+reset(); S().playerState.communityCenter.value = 'unknown'; S().playerState.keyToTown.value = 'yes';
+ok('皮埃尔周三：钥匙已持有 → 即使社区中心未知也可用', M.shopStatus('pierre', D3).service.level === 'ok');
+
+// 两个维度确实不同：皮埃尔常态下可进到 21:00，但只能交易到 17:00
+reset(); S().playerState.communityCenter.value = 'restored';   // 先给一个确定状态，否则周三的皮埃尔是未知、没有时段
+const pierreNormal = M.shopStatus('pierre', D3);
+ok('皮埃尔：可进入 与 可交易 的时段不同', pierreNormal.access.windows[0].s === 540 && pierreNormal.access.windows[0].e === 1260 &&
+   pierreNormal.service.windows[0].s === 540 && pierreNormal.service.windows[0].e === 1020);
+
+// 木匠店：施工时「能进但办不了事」——两维度分离最直观的一例
+reset(); S().playerState.robinBuilding.value = 'yes';
+const robinBuild = M.shopStatus('robin', D3);
+ok('木匠店施工：服务关闭', robinBuild.service.level === 'closed' && !robinBuild.hasTip);
+ok('木匠店施工：建筑仍可进入（两维度分离）', robinBuild.access.level === 'ok');
+
+// 木匠店：周二 / 雨天 / 周五 16:00 / 夏 18 日
+reset();
+const robinTue = M.shopStatus('robin', D2);
+ok('木匠店周二晴：服务关闭 + 两个技巧窗口', robinTue.service.level === 'closed' && robinTue.service.windows.filter(x => x.kind === 'tip').length === 2);
+ok('木匠店周二：技巧不写成绿色营业段', !robinTue.service.windows.some(x => x.kind === 'ok'));
+ok('木匠店周二：建筑仍可进入', robinTue.access.level === 'ok');
+reset(); S().weather = 'rain';
+const robinTueRain = M.shopStatus('robin', D2);
+ok('木匠店周二雨：照常 09:00–17:00', robinTueRain.service.level === 'ok' && robinTueRain.service.windows[0].s === 540 && robinTueRain.service.windows[0].e === 1020);
+reset();
+const robinFri = M.shopStatus('robin', D5);
+ok('木匠店周五：16:00 关店（#12 新增）', robinFri.service.windows[0].e === 960);
+reset();
+const robinSummer18 = M.shopStatus('robin', { year: 1, season: 1, day: 18 });
+ok('木匠店夏 18 日：正式服务关闭', robinSummer18.service.level === 'closed');
+ok('木匠店夏 18 日：约 17:50 有技巧窗口（#12 新增）', robinSummer18.service.windows.some(x => x.kind === 'tip' && x.s === 1070));
+ok('木匠店夏 18 日：建筑仍可进入', robinSummer18.access.level === 'ok');
+
+// 铁匠铺：周五分支 / 冬16 / 绿雨 / 春16 / 沙漠节 / 度假村
+reset(); S().playerState.communityCenter.value = 'restored';
+ok('铁匠铺周五晴（社区中心已修复）：Clint 不在店', M.shopStatus('clint', D5).service.level === 'closed');
+reset(); S().playerState.communityCenter.value = 'restored'; S().weather = 'rain';
+ok('铁匠铺周五雨：照常办理', M.shopStatus('clint', D5).service.level === 'ok');
+reset(); S().playerState.communityCenter.value = 'unknown';
+ok('铁匠铺周五（社区中心未知）：保持未知', M.shopStatus('clint', D5).service.level === 'unknown');
+reset();
+const clintWinter16 = M.shopStatus('clint', { year: 1, season: 3, day: 16 });
+ok('铁匠铺冬 16 日：10:30 前办理', clintWinter16.service.windows[0].e === 630);
+reset(); S().weather = 'greenRain';
+ok('铁匠铺第 1 年绿雨：Clint 不在店内', M.shopStatus('clint', D5).service.level === 'closed');
+reset();
+ok('铁匠铺春 16 日：可能离店 → 保持未知（#12 新增）', M.shopStatus('clint', { year: 1, season: 0, day: 16 }).service.level === 'unknown');
+reset(); S().specialDay = 'desertFestival';
+ok('铁匠铺沙漠节：可能离店 → 保持未知（#12 新增）', M.shopStatus('clint', D3).service.level === 'unknown');
+reset(); S().playerState.resortUnlocked.value = 'yes';
+ok('铁匠铺周五 + 度假村已解锁：可能离店 → 保持未知', M.shopStatus('clint', D5).service.level === 'unknown');
+
+// 特殊日：普通节日关闭；晚间／特殊节日按例外保持未知
+reset(); S().specialDay = 'festival';
+ok('普通节日：三家门店服务均关闭', ['pierre', 'robin', 'clint'].every(s => M.shopStatus(s, D3).service.level === 'closed'));
+reset(); S().specialDay = 'eveningFestival';
+ok('晚间／特殊节日：按资料例外保持未知，不写成确定关闭', ['pierre', 'robin', 'clint'].every(s => M.shopStatus(s, D3).service.level === 'unknown'));
+reset(); S().specialDay = 'desertFestival';
+ok('沙漠节：皮埃尔按例外保持未知', M.shopStatus('pierre', D3).service.level === 'unknown');
+
+// 规则明细必须带来源与可信度（矩阵要求保留来源）
+reset();
+ok('门店规则条目都带来源与可信度', M.shopStatus('pierre', D3).rules.every(r => r.src && r.conf));
 
 /* 工具升级 D / D+1 / D+2 */
 M.seedScenario('fresh');
@@ -154,6 +208,9 @@ ok('生效日期之后的活动受影响', M.previewStateChange('wateringCan','i
 ok('生效日期之前的活动不受影响', !M.previewStateChange('wateringCan','iridium',{year:1,season:0,day:12}).some(x=>x.a.id===w5.id));
 S().viewingDay={year:1,season:0,day:3};
 const sh = M.newActivity('shop',540); sh.shop='pierre';
+// 新的周三规则需要「社区中心 或 城镇钥匙」二者之一确定；钥匙未知时，单改社区中心不足以改变结论
+ok('周三判定：钥匙未知时，仅把社区中心改为未修复不足以定论', M.previewStateChange('communityCenter','notRestored',null).length === 0);
+S().playerState.keyToTown.value = 'no';
 const cc = M.previewStateChange('communityCenter','notRestored',null);
 ok('门店规则判断进入重估预览', cc.some(x=>x.a.id===sh.id), cc.map(x=>x.from.text+' -> '+x.to.text));
 
