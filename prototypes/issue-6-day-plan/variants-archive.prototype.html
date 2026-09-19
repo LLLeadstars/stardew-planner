@@ -1,0 +1,1741 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PROTOTYPE · 星露谷日程规划（丢弃用 · 验证电脑端规划主流程与编辑交互）</title>
+<!--
+  丢弃原型 · 不进入正式实现。
+  问题：玩家如何从首次进入到排好一天（选活动 / 填参数 / 看估算 / 排序 / 固定时间 / 处理冲突 / 关联目标）？
+  形式：三个结构迥异的界面变体，共享同一份内存日程数据，底部浮动条切换。
+  运行：直接双击本文件即可，无构建、无依赖、无网络请求。
+  持久化：localStorage 键 PROTOTYPE·stardew-planner·day-plan·wipe-me，顶栏「存储」面板可清空。
+-->
+<style>
+:root{
+  --bg:#f4f1e8; --panel:#fffdf8; --panel2:#faf7ef; --ink:#2b2a26; --muted:#8b8677;
+  --line:#e0dacb; --line2:#cfc7b3;
+  --ok:#2f7d4f; --okbg:#e7f4ea; --bad:#a63b2f; --badbg:#fcebe8; --warn:#8a6400; --warnbg:#fdf4d8;
+  --accent:#3f6f4a; --accent-bg:#e8f0e9;
+  --info:#3a5a8a; --infobg:#e9eef7;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:13px/1.55 "Segoe UI","Microsoft YaHei",system-ui,sans-serif;overflow:hidden;display:flex;flex-direction:column;height:100vh}
+body.dragging{user-select:none;cursor:grabbing}
+button{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line2);border-radius:6px;padding:3px 9px;cursor:pointer}
+button:hover{background:var(--panel2)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary:hover{filter:brightness(1.08)}
+button.ghost{border-color:transparent;background:transparent;color:var(--muted);padding:2px 5px}
+button.ghost:hover{background:var(--panel2);color:var(--ink)}
+button.danger{border-color:#e0b6af;color:var(--bad)}
+select,input[type=number],input[type=text],textarea{font:inherit;color:inherit;background:#fff;border:1px solid var(--line2);border-radius:5px;padding:2px 6px;max-width:100%}
+input[type=number]{width:76px}
+label{display:block;margin:0 0 7px}
+label > span.lb{display:block;color:var(--muted);font-size:11.5px;letter-spacing:.02em}
+h3{margin:0 0 8px;font-size:14px}
+h4{margin:14px 0 6px;font-size:12.5px;color:var(--muted);text-transform:none;letter-spacing:.04em}
+p{margin:0 0 8px}
+.hint{color:var(--muted);font-size:11.5px}
+.protobadge{display:inline-block;background:#8a2f2f;color:#fff;border-radius:4px;padding:1px 6px;font-size:10.5px;letter-spacing:.08em;vertical-align:middle}
+/* ---------- 顶栏 ---------- */
+#topbar{background:var(--panel);border-bottom:1px solid var(--line);padding:6px 12px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;flex:none}
+.tbgroup{display:flex;align-items:center;gap:5px;font-size:12px}
+.tbgroup > .k{color:var(--muted);font-size:11px}
+.tbsep{width:1px;height:20px;background:var(--line)}
+.chip{display:inline-block;border:1px solid var(--line2);border-radius:999px;padding:1px 8px;font-size:11.5px;background:#fff}
+.chip.ok{background:var(--okbg);border-color:#bcdcc4;color:var(--ok)}
+.chip.bad{background:var(--badbg);border-color:#e8c3bb;color:var(--bad)}
+.chip.warn{background:var(--warnbg);border-color:#e6d69b;color:var(--warn)}
+.chip.info{background:var(--infobg);border-color:#c3d0e6;color:var(--info)}
+.chip.mute{color:var(--muted)}
+/* ---------- 主体 ---------- */
+#main{display:flex;flex:1;min-height:0;overflow:hidden}
+.col{overflow:auto;padding:10px 12px 46px}
+.col.left{border-right:1px solid var(--line);background:var(--panel2)}
+.col.right{border-left:1px solid var(--line);background:var(--panel2)}
+.grow{flex:1;min-width:0}
+.panelbox{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;margin-bottom:10px}
+.cardhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+.cardhead .t{font-weight:600}
+.row{display:flex;gap:8px;align-items:center}
+.row.wrap{flex-wrap:wrap}
+.spread{display:flex;justify-content:space-between;gap:8px;align-items:center}
+/* ---------- 活动行 / 块 ---------- */
+.actrow{border:1px solid var(--line);background:var(--panel);border-radius:7px;padding:6px 8px;margin-bottom:6px;cursor:pointer}
+.actrow.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
+.actrow.done{opacity:.62}
+.actrow .ttl{font-weight:600}
+.meta{color:var(--muted);font-size:11.5px}
+.tag{display:inline-block;border-radius:4px;padding:0 5px;font-size:10.5px;border:1px solid var(--line2);background:#fff;color:var(--muted)}
+.tag.manual{background:#fdeede;border-color:#e8cba6;color:#8a5a13}
+.tag.estimate{background:var(--accent-bg);border-color:#bcd6c1;color:var(--accent)}
+.tag.personal{background:#e9e9f7;border-color:#c6c6e4;color:#4a4a8a}
+.tag.last{background:#eef3ea;border-color:#cfdcc6;color:#4d6b3f}
+.tag.system{background:#f2f0ea;border-color:var(--line2);color:var(--muted)}
+.tag.conflict{background:var(--badbg);border-color:#e8c3bb;color:var(--bad)}
+.tag.goal{background:var(--infobg);border-color:#c3d0e6;color:var(--info)}
+.tag.proto{background:#f0e6f7;border-color:#d5c0e6;color:#6a3f8a}
+/* 时间轴（变体 A） */
+#axis{position:relative;flex:1;min-width:0;overflow:auto;padding-bottom:46px}
+#axisInner{position:relative;margin:0 0 24px}
+.hourline{position:absolute;left:0;right:0;border-top:1px dashed var(--line);pointer-events:none}
+.hourlab{position:absolute;left:0;width:62px;text-align:right;color:var(--muted);font-size:10.5px;transform:translateY(-7px);pointer-events:none}
+.block{position:absolute;border-radius:6px;border:1px solid var(--line2);background:#fff;padding:2px 6px;overflow:hidden;cursor:grab;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.block.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
+.block.conflict{border-color:#d9a79b;background:var(--badbg)}
+.block .bt{font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.block .bm{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden}
+.block .rs{position:absolute;left:0;right:0;bottom:0;height:6px;cursor:ns-resize;background:linear-gradient(transparent,rgba(0,0,0,.07))}
+.gap{position:absolute;border-radius:4px;background:repeating-linear-gradient(45deg,#f0ece0,#f0ece0 6px,#f7f4ec 6px,#f7f4ec 12px);color:var(--muted);font-size:10.5px;display:flex;align-items:center;padding-left:8px;pointer-events:none;border:1px dashed var(--line)}
+#nowline{position:absolute;left:0;right:0;border-top:2px solid #c05a3c;z-index:5}
+#nowline .l{position:absolute;left:66px;top:-8px;background:#c05a3c;color:#fff;font-size:10px;padding:0 5px;border-radius:3px}
+/* 时间槽（变体 C） */
+.slot{display:flex;gap:8px;border-bottom:1px dashed var(--line);min-height:34px;padding:3px 0;align-items:flex-start}
+.slot .st{width:52px;color:var(--muted);font-size:11px;padding-top:3px;flex:none}
+.slot .sc{flex:1;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.chipact{border:1px solid var(--line2);background:var(--panel);border-radius:5px;padding:1px 6px;font-size:11.5px;cursor:pointer;max-width:100%}
+.chipact.sel{border-color:var(--accent);background:var(--accent-bg)}
+.chipact.conflict{border-color:#d9a79b;background:var(--badbg)}
+.chipact.done{opacity:.6}
+.addslot{border:1px dashed var(--line2);color:var(--muted);background:transparent;border-radius:5px;font-size:11px;padding:0 6px}
+/* 托盘（变体 C） */
+.traycard{border:1px solid var(--line);background:var(--panel);border-radius:7px;padding:5px 7px;margin-bottom:5px;cursor:pointer;display:flex;justify-content:space-between;gap:6px;align-items:center}
+.traycard:hover{border-color:var(--accent);background:var(--accent-bg)}
+/* 变体 D：融合 · 按时间定位的单列表 */
+.frow{display:flex;gap:8px;align-items:stretch;margin-bottom:4px}
+.fgutter{width:56px;flex:none;text-align:right;color:var(--muted);font-size:11px;padding-top:8px;font-variant-numeric:tabular-nums}
+.fcardwrap{flex:1;min-width:0;position:relative}
+.fmove{position:absolute;right:5px;top:5px;display:flex;gap:1px;opacity:0;transition:opacity .12s}
+.frow:hover .fmove,.fcard.sel + .fmove{opacity:1}
+.fmove button{padding:0 5px;font-size:11px;line-height:1.5}
+.fcard{border:1px solid var(--line2);background:var(--panel);border-radius:7px;padding:5px 9px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.fcard:hover{border-color:var(--accent)}
+.fcard.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)}
+.fcard.conflict{background:var(--badbg)}
+.fcard.spine{border-left:3px solid #d9a79b}
+.fcard.nested{background:var(--panel2)}
+.fcard.done{opacity:.6}
+.ftitle{font-weight:600;margin-bottom:3px}
+.fgutter.cont{color:var(--line2);font-size:13px}
+.fgap{position:relative;margin:0 0 4px 64px;border-left:2px dotted var(--line2)}
+.fgap.adj{border-left-style:dashed}
+.fgap.drop-on{background:var(--accent-bg)}
+.fcard.drop-on{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-bg)}
+.fgap > span{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:10.5px;background:var(--bg);padding:0 5px;white-space:nowrap}
+.fov{position:relative;margin:0 0 4px 64px;border-left:2px solid #d9a79b}
+.fov > span{position:absolute;left:9px;top:50%;transform:translateY(-50%);background:var(--badbg);color:var(--bad);font-size:10.5px;padding:0 6px;border-radius:3px;white-space:nowrap}
+/* 变体 E：线性轴（等比缩放，不做非均匀压缩） */
+#eaxis{flex:1;min-width:0;overflow:auto;position:relative}
+#einner{position:relative;margin:8px 0 24px}
+.eblock{position:absolute;border-radius:6px;border:1px solid var(--line2);background:var(--panel);overflow:hidden;cursor:grab;box-shadow:0 1px 2px rgba(0,0,0,.06);padding:2px 6px}
+.eblock.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg);z-index:3}
+.eblock.done{opacity:.6}
+.eblock.floored{border-style:dashed}
+.ename{font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.emeta{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ers{position:absolute;left:0;right:0;bottom:0;height:6px;cursor:ns-resize;background:linear-gradient(transparent,rgba(0,0,0,.07))}
+.enest{position:absolute;border-radius:4px;border:1px solid var(--line2);background:var(--panel2);overflow:hidden;padding:1px 5px;cursor:pointer}
+.enest.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-bg);z-index:2}
+.enest.floored{border-style:dashed}
+.enest.done{opacity:.6}
+.egap{position:absolute;left:64px;right:8px;color:var(--muted);font-size:10.5px;display:flex;align-items:center;padding-left:8px;border-left:2px dotted var(--line2);pointer-events:none}
+.ebound{border-top:2px solid #c9a227}
+.ebound .lbl{position:absolute;right:6px;top:-9px;background:#c9a227;color:#fff;font-size:10px;padding:0 5px;border-radius:3px}
+/* 弹层 */
+#overlay{position:fixed;inset:0;background:rgba(40,38,32,.45);display:none;align-items:center;justify-content:center;z-index:60;padding:24px}
+#overlay.on{display:flex}
+#modal{background:var(--panel);border-radius:10px;max-width:820px;width:100%;max-height:88vh;overflow:auto;padding:16px 18px;box-shadow:0 12px 40px rgba(0,0,0,.3)}
+/* 切换条 */
+#switcher{position:fixed;left:50%;bottom:12px;transform:translateX(-50%);background:#22201c;color:#fff;border-radius:999px;padding:5px 6px;display:flex;align-items:center;gap:6px;box-shadow:0 6px 22px rgba(0,0,0,.35);z-index:70;font-size:12px}
+#switcher button{background:#3a3730;border-color:#4c483e;color:#fff;border-radius:999px;padding:3px 10px}
+#switcher button:hover{background:#4c483e}
+#switcher .lab{padding:0 8px;min-width:230px;text-align:center;letter-spacing:.02em}
+#switcher .n{color:#b9b2a2;font-size:11px}
+table.grid{border-collapse:collapse;width:100%;font-size:12px}
+table.grid th,table.grid td{border-bottom:1px solid var(--line);padding:3px 6px;text-align:left}
+table.grid th{color:var(--muted);font-weight:500;font-size:11px}
+.rulelist{list-style:none;padding:0;margin:0}
+.rulelist li{border-bottom:1px dashed var(--line);padding:4px 0;font-size:11.8px}
+.rulelist li .r{color:var(--muted);font-size:10.5px}
+.rulelist li.na{opacity:.45;text-decoration:line-through}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}
+.tabs button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0}
+.empty{color:var(--muted);font-size:12px;padding:8px 0}
+.split{display:flex;gap:10px;align-items:flex-start}
+.warnbox{background:var(--warnbg);border:1px solid #e6d69b;border-radius:6px;padding:6px 8px;font-size:11.8px;color:var(--warn);margin:6px 0}
+.okbox{background:var(--okbg);border:1px solid #bcdcc4;border-radius:6px;padding:6px 8px;font-size:11.8px;color:var(--ok);margin:6px 0}
+.badbox{background:var(--badbg);border:1px solid #e8c3bb;border-radius:6px;padding:6px 8px;font-size:11.8px;color:var(--bad);margin:6px 0}
+.infobox{background:var(--infobg);border:1px solid #c3d0e6;border-radius:6px;padding:6px 8px;font-size:11.8px;color:var(--info);margin:6px 0}
+</style>
+</head>
+<body>
+<div id="topbar"></div>
+<div id="main"></div>
+<div id="overlay"><div id="modal"></div></div>
+<div id="switcher"></div>
+<script>
+/* =====================================================================================
+   0 · 领域常量与真实数据（来自 docs/research/ 中已核验的 PC 原版 1.6.15 材料）
+   ===================================================================================== */
+const DAY_START = 6 * 60;      // 游戏日 06:00
+const DAY_END   = 26 * 60;     // 次日 02:00
+const STEP      = 10;          // 10 游戏分钟粒度
+const PX_PER_MIN = 0.6;        // 时间轴：10 分钟 = 6px
+const LS_KEY = 'PROTOTYPE·stardew-planner·day-plan·wipe-me';
+const RULESET = 'PC 原版 1.6.15 · 无 Mod';
+const SEASON_NAMES = ['春', '夏', '秋', '冬'];
+const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+
+// 作物矩阵：documents/research/stardew-crops-1.6.15.md 的 V1 默认矩阵（40 条）
+// [名称, 可种植季节, 首次生长天数, 重复收获间隔(0=一次收获)]
+const CROPS = [
+  ['Amaranth', ['秋'], 7, 0], ['Ancient Fruit', ['春', '夏', '秋'], 28, 7],
+  ['Artichoke', ['秋'], 8, 0], ['Beet', ['秋'], 6, 0], ['Blue Jazz', ['春'], 7, 0],
+  ['Blueberry', ['夏'], 13, 4], ['Bok Choy', ['秋'], 4, 0], ['Broccoli', ['秋'], 8, 4],
+  ['Carrot', ['春'], 3, 0], ['Cauliflower', ['春'], 12, 0], ['Coffee Bean', ['春', '夏'], 10, 2],
+  ['Corn', ['夏', '秋'], 14, 4], ['Cranberries', ['秋'], 7, 5], ['Eggplant', ['秋'], 5, 5],
+  ['Fairy Rose', ['秋'], 12, 0], ['Fiber', ['春', '夏', '秋', '冬'], 7, 0], ['Garlic', ['春'], 4, 0],
+  ['Hot Pepper', ['夏'], 5, 3], ['Kale', ['春'], 6, 0], ['Melon', ['夏'], 12, 0],
+  ['Parsnip', ['春'], 4, 0], ['Pineapple', ['夏'], 14, 7], ['Poppy', ['夏'], 7, 0],
+  ['Potato', ['春'], 6, 0], ['Powdermelon', ['冬'], 7, 0], ['Pumpkin', ['秋'], 13, 0],
+  ['Qi Fruit', ['春', '夏', '秋', '冬'], 4, 0], ['Radish', ['夏'], 6, 0], ['Red Cabbage', ['夏'], 9, 0],
+  ['Rhubarb', ['春'], 13, 0], ['Starfruit', ['夏'], 13, 0], ['Strawberry', ['春'], 8, 4],
+  ['Summer Spangle', ['夏'], 8, 0], ['Summer Squash', ['夏'], 6, 3], ['Sunflower', ['夏', '秋'], 8, 0],
+  ['Sweet Gem Berry', ['秋'], 24, 0], ['Tomato', ['夏'], 11, 4], ['Tulip', ['春'], 6, 0],
+  ['Wheat', ['夏', '秋'], 4, 0], ['Yam', ['秋'], 10, 0],
+];
+
+// 九类内置活动 + 自定义。#3 结论：仅浇水按工作量估算，其余按时间预留。
+const TYPES = {
+  plant:    { name: '种植',        icon: '🌱', timeInput: 'reserve',  rec: 30,  blurb: '可随活动建立计划作物批次；完成后按实际完成日期激活' },
+  water:    { name: '浇水',        icon: '💧', timeInput: 'workload', rec: 45,  blurb: '首批唯一的工作量估算活动（受限校准场景）' },
+  harvest:  { name: '收获',        icon: '🌾', timeInput: 'reserve',  rec: 60,  blurb: '按时间预留，可关联作物批次；工作量估算留作后续' },
+  shop:     { name: '购物',        icon: '🛒', timeInput: 'reserve',  rec: 60,  blurb: '首批门店：皮埃尔杂货店、木匠商店、铁匠铺' },
+  toolGive: { name: '工具升级交付', icon: '🔨', timeInput: 'reserve',  rec: 30,  blurb: '完成后工具进入「升级中」，D+2 完成' },
+  toolTake: { name: '工具取回',    icon: '📦', timeInput: 'reserve',  rec: 30,  blurb: '完成后才更新工具等级' },
+  travel:   { name: '赶路',        icon: '🚶', timeInput: 'reserve',  rec: 30,  blurb: '可选起终点，不估算路线' },
+  fishing:  { name: '钓鱼',        icon: '🎣', timeInput: 'reserve',  rec: 120, blurb: '可选地点与自由文本目标，不估算产出' },
+  mining:   { name: '采矿',        icon: '⛏️', timeInput: 'reserve',  rec: 120, blurb: '可选地点与自由文本目标，不估算产出' },
+  custom:   { name: '自定义活动',  icon: '✏️', timeInput: 'reserve',  rec: 30,  blurb: '玩家自由填写的事项' },
+};
+const TYPE_ORDER = ['plant', 'water', 'harvest', 'shop', 'toolGive', 'toolTake', 'travel', 'fishing', 'mining', 'custom'];
+
+// 浇水估算：占位校准系数，显式标注为待 #11「执行浇水耗时实测与校准」替换。
+const WATER_CALIB = {
+  version: '占位系数 v0',
+  perTileMin: 0.5,                                  // 每格浇水动作
+  density: { dense: { f: 1.25, label: '密集' }, normal: { f: 1.0, label: '普通' }, scattered: { f: 1.5, label: '分散' } },
+  canCapacity: { basic: 40, copper: 55, steel: 70, gold: 85, iridium: 100 },
+  refillMin: 5,                                     // 每次往返补水（占位：含走到水源再返回的时间）
+  maxTiles: 120,                                    // 校准上界，超出即降级
+};
+
+// 玩家状态定义（渐进收集 + 状态生效日期）
+const STATE_DEFS = {
+  wateringCan:     { label: '喷壶等级', values: ['basic', 'copper', 'steel', 'gold', 'iridium'],
+                     names: { basic: '基础', copper: '铜', steel: '钢', gold: '金', iridium: '铱' }, def: 'basic',
+                     usedBy: '浇水（按工作量估算）' },
+  communityCenter: { label: '社区中心状态', values: ['unknown', 'restored', 'notRestored'],
+                     names: { unknown: '未知', restored: '已修复', notRestored: '未修复' }, def: 'unknown',
+                     usedBy: '皮埃尔杂货店、铁匠铺' },
+  keyToTown:       { label: '城镇钥匙', values: ['unknown', 'yes', 'no'],
+                     names: { unknown: '未知', yes: '持有', no: '未持有' }, def: 'unknown',
+                     usedBy: '进门条件（不改变服务窗口）' },
+  robinBuilding:   { label: '罗宾正在农场施工', values: ['unknown', 'yes', 'no'],
+                     names: { unknown: '未知', yes: '是', no: '否' }, def: 'unknown', usedBy: '木匠商店' },
+  resortUnlocked:  { label: '姜岛度假村已解锁', values: ['unknown', 'yes', 'no'],
+                     names: { unknown: '未知', yes: '是', no: '否' }, def: 'unknown', usedBy: '木匠商店周二随机分支' },
+  backpackFree:    { label: '背包至少一个空位', values: ['unknown', 'yes', 'no'],
+                     names: { unknown: '未知', yes: '有', no: '没有' }, def: 'unknown', usedBy: '工具取回' },
+};
+
+const TOOLS  = { axe: '斧头', pickaxe: '十字镐', hoe: '锄头', can: '喷壶', pan: '淘盘', trash: '垃圾桶' };
+const LEVELS = ['basic', 'copper', 'steel', 'gold', 'iridium'];
+const LEVEL_NAMES = { basic: '基础', copper: '铜', steel: '钢', gold: '金', iridium: '铱' };
+// 铁匠铺升级矩阵：docs/research/stardew-tool-upgrades.md
+const UPGRADE = {
+  copper:   { from: 'basic',  mat: '铜锭 ×5', fee: 2000 },
+  steel:    { from: 'copper', mat: '铁锭 ×5', fee: 5000 },
+  gold:     { from: 'steel',  mat: '金锭 ×5', fee: 10000 },
+  iridium:  { from: 'gold',   mat: '铱锭 ×5', fee: 25000 },
+};
+const SHOPS = {
+  pierre: { name: '皮埃尔杂货店', base: { s: 540, e: 1020 }, hours: '09:00–17:00' },
+  robin:  { name: '木匠商店',     base: { s: 540, e: 1020 }, hours: '09:00–17:00' },
+  clint:  { name: '铁匠铺',       base: { s: 540, e: 960  }, hours: '09:00–16:00' },
+};
+
+/* =====================================================================================
+   1 · 工具函数
+   ===================================================================================== */
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pad = n => String(n).padStart(2, '0');
+const uid = () => Math.random().toString(36).slice(2, 9);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const snap = v => Math.round(v / STEP) * STEP;
+const sum = a => a.reduce((x, y) => x + y, 0);
+
+function dkey(d) { return d.year + '-' + d.season + '-' + d.day; }
+function dstr(d) { return '第' + d.year + '年 ' + SEASON_NAMES[d.season] + d.day + '日'; }
+function dshort(d) { return SEASON_NAMES[d.season] + d.day; }
+function weekdayOf(d) { return (d.day - 1) % 7; }              // 0=周一（春 1 日 = 周一）
+function addDays(d, n) {
+  let { year, season, day } = d; day += n;
+  while (day > 28) { day -= 28; season++; if (season > 3) { season = 0; year++; } }
+  while (day < 1)  { day += 28; season--; if (season < 0) { season = 3; year--; } }
+  return { year, season, day };
+}
+function cmpDate(a, b) { return (a.year - b.year) || (a.season - b.season) || (a.day - b.day); }
+function sameDate(a, b) { return cmpDate(a, b) === 0; }
+function tmin(hhmm) { const p = String(hhmm).split(':').map(Number); let v = p[0] * 60 + p[1]; if (v < 6 * 60) v += 1440; return v; }
+function fmtT(v) {
+  const nd = v >= 1440; const w = ((v % 1440) + 1440) % 1440;
+  return (nd ? '次日 ' : '') + pad(Math.floor(w / 60)) + ':' + pad(w % 60);
+}
+function fmtDur(m) { const h = Math.floor(m / 60), mm = m % 60; return h ? (mm ? h + 'h' + mm + 'm' : h + 'h') : mm + 'm'; }
+function mmssFromRange(s, e) { return fmtT(s) + '–' + fmtT(e); }
+
+/* =====================================================================================
+   2 · 状态与持久化
+   ===================================================================================== */
+function freshState() {
+  const defs = {}; for (const k in STATE_DEFS) defs[k] = { value: STATE_DEFS[k].def, effectiveFrom: null };
+  const table = {}; for (const t of TYPE_ORDER) table[t] = TYPES[t].rec;
+  return {
+    v: 1,
+    mode: 'single',
+    currentGameDay: { year: 1, season: 0, day: 1 },
+    viewingDay: { year: 1, season: 0, day: 1 },
+    weather: 'sunny',                       // sunny | rain | greenRain | unknown
+    specialDay: 'none',                     // none | festival
+    playerState: defs,
+    toolLevels: { axe: 'basic', pickaxe: 'basic', hoe: 'basic', can: 'basic', pan: 'copper', trash: 'basic' },
+    upgrade: null,                          // { tool, to, from, delivered, taken }
+    goals: [],
+    activities: [],
+    batches: [],
+    defaultTable: table,                    // 系统推荐预留（推荐预留默认值表）
+    personalDefaults: {},                   // 玩家明确保存的个人默认
+    lastReserved: {},                       // 最近一次预留 { minutes, date }
+    anchorLog: [],                          // 锚定对照观察记录
+    scenario: 'fresh',
+    gapMode: 'normal',
+  };
+}
+let state = freshState();
+let ui = { variant: 'A', sel: null, panel: null, tab: 'state', seed: {}, pending: null, showDetail: {} };
+
+function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { console.warn('保存失败', e); } }
+function load() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    const s = JSON.parse(raw);
+    if (!s || s.v !== 1) return false;
+    state = Object.assign(freshState(), s);
+    return true;
+  } catch (e) { console.warn('恢复失败', e); return false; }
+}
+function wipe() { try { localStorage.removeItem(LS_KEY); } catch (e) {} }
+
+const getAct = id => state.activities.find(a => a.id === id);
+const sortedActs = () => state.activities.slice().sort((a, b) => tmin(a.start) - tmin(b.start) || String(a.id).localeCompare(String(b.id)));
+
+/* =====================================================================================
+   3 · 领域计算：时长来源优先级 / 浇水估算 / 冲突 / 空闲 / 门店 / 工具升级 / 批次
+   ===================================================================================== */
+
+// 优先级：当前活动手填值 > 玩家明确保存的个人默认 > 最近一次预留 > 系统推荐预留
+function priorityDuration(type) {
+  if (state.personalDefaults[type] != null) return { minutes: state.personalDefaults[type], source: 'personal' };
+  if (state.lastReserved[type]) return { minutes: state.lastReserved[type].minutes, source: 'last', date: state.lastReserved[type].date };
+  return { minutes: state.defaultTable[type], source: 'system' };
+}
+const SOURCE_LABEL = {
+  manual: '手填（当前活动）', estimate: '系统估算', personal: '个人默认',
+  last: '最近一次预留', system: '系统推荐预留', seed: '对照初始值（原型）',
+};
+const SOURCE_CLASS = { manual: 'manual', estimate: 'estimate', personal: 'personal', last: 'last', system: 'system', seed: 'proto' };
+
+// 浇水工作量估算（占位系数）
+function estimateWater(act, canOverride) {
+  const w = act.workload || {};
+  const tiles = Number(w.tiles || 0);
+  const density = w.density || 'normal';
+  const can = canOverride || state.playerState.wateringCan.value;
+  const reasons = [];
+  if (state.mode !== 'single') reasons.push('当前为多人模式，未包含在已校准场景内');
+  if (!tiles || tiles < 1) return { ok: false, reasons: ['未填写待浇水格数'] };
+  if (tiles > WATER_CALIB.maxTiles) reasons.push('格数 ' + tiles + ' 超出校准上界 ' + WATER_CALIB.maxTiles + ' 格');
+  if (reasons.length) return { ok: false, reasons };
+  const df = WATER_CALIB.density[density].f;
+  const cap = WATER_CALIB.canCapacity[can] || 40;
+  const refills = Math.floor((tiles - 1) / cap);
+  const actionMin = tiles * WATER_CALIB.perTileMin * df;
+  const refillMin = refills * WATER_CALIB.refillMin;
+  const minutes = snap(Math.max(STEP, actionMin + refillMin));
+  return {
+    ok: true, minutes,
+    breakdown: [
+      { k: '浇水动作', v: tiles + ' 格 × ' + WATER_CALIB.perTileMin + ' 分/格 × ' + WATER_CALIB.density[density].label + '系数 ' + df + ' = ' + actionMin.toFixed(1) + ' 分' },
+      { k: '田间往返补水', v: refills + ' 次 × ' + WATER_CALIB.refillMin + ' 分 = ' + refillMin.toFixed(1) + ' 分' },
+      { k: '喷壶容量', v: LEVEL_NAMES[can] + '级 ' + cap + ' 格' },
+    ],
+  };
+}
+
+// 活动的实际时长与来源标签
+function actTime(act) {
+  if (act.manualDuration != null) return { minutes: act.manualDuration, source: 'manual' };
+  if (act.seedOverride != null) return { minutes: act.seedOverride, source: 'seed' };
+  if (TYPES[act.type].timeInput === 'workload') {
+    const e = estimateWater(act);
+    if (e.ok) return { minutes: e.minutes, source: 'estimate', breakdown: e.breakdown };
+  }
+  return priorityDuration(act.type);
+}
+function actRange(act) { const s = tmin(act.start), t = actTime(act); return { s, e: s + t.minutes, t }; }
+
+// 冲突组：直接重叠 + 传递闭包
+function conflictGroups() {
+  const items = sortedActs().map(a => { const r = actRange(a); return { a, s: r.s, e: r.e }; });
+  const groups = []; let cur = null;
+  for (const it of items) {
+    if (cur && it.s < cur.end) { cur.items.push(it); cur.end = Math.max(cur.end, it.e); }
+    else { cur = { items: [it], s: it.s, end: it.e }; groups.push(cur); }
+  }
+  return groups;
+}
+function layoutInfo() {
+  const groups = conflictGroups(), layout = {}, conflicts = [];
+  for (const g of groups) {
+    const lanes = [];
+    for (const it of g.items) {
+      let li = lanes.findIndex(end => end <= it.s);
+      if (li < 0) { lanes.push(it.e); li = lanes.length - 1; } else lanes[li] = it.e;
+      layout[it.a.id] = { lane: li, lanes: 1, conflict: g.items.length > 1 };
+    }
+    for (const it of g.items) layout[it.a.id].lanes = lanes.length;
+    if (g.items.length > 1) conflicts.push(g);
+  }
+  return { groups, layout, conflicts };
+}
+function directOverlaps(id) {
+  const a = actRange(getAct(id));
+  return state.activities.filter(b => b.id !== id).filter(b => { const r = actRange(b); return a.s < r.e && r.s < a.e; });
+}
+function freeGaps() {
+  const gaps = []; let cursor = DAY_START;
+  for (const a of sortedActs()) {
+    const r = actRange(a);
+    if (r.s > cursor) gaps.push({ s: cursor, e: r.s });
+    cursor = Math.max(cursor, r.e);
+  }
+  if (cursor < DAY_END) gaps.push({ s: cursor, e: DAY_END });
+  return gaps.filter(g => g.e - g.s >= STEP);
+}
+function overrun() {
+  // 超出游戏日：结束时刻晚于次日 02:00，保留原安排，只提示超出量
+  return sortedActs().map(a => ({ a, r: actRange(a) })).filter(x => x.r.e > DAY_END)
+    .map(x => ({ a: x.a, over: x.r.e - DAY_END }));
+}
+
+// 门店状态：三色 + 条件性交易窗口。依据 #3 结论与 docs/research/stardew-shop-exception-windows.md
+function shopStatus(id, date) {
+  const wd = weekdayOf(date), w = state.weather, ps = state.playerState;
+  const val = k => ps[k].value;
+  const rules = [];
+  const add = (text, applies, src, conf) => rules.push({ text, applies, src: src || '研究材料 · 固定修订', conf: conf || '中等（社区 Wiki，待实机校准）' });
+  let level = 'ok', headline = '', windows = [];
+  const S = SHOPS[id];
+
+  if (id === 'pierre') {
+    add('常规营业 09:00–17:00', true, '待 #12 核验完整矩阵', '待核验');
+    windows = [{ s: S.base.s, e: S.base.e, kind: 'ok' }];
+    headline = '常规营业';
+    if (wd === 2) {
+      if (val('communityCenter') === 'restored') { headline = '周三照常营业（社区中心已修复）'; add('社区中心修复后周三恢复营业', true); }
+      else if (val('communityCenter') === 'notRestored') {
+        level = 'closed'; windows = []; headline = '今日休息';
+        add('社区中心未修复时周三休息', true);
+      } else {
+        level = 'unknown'; windows = []; headline = '暂按不可用';
+        add('社区中心状态未知，无法判断周三是否营业', true);
+      }
+    }
+    if (state.specialDay === 'festival') { level = 'closed'; windows = []; headline = '节日不可进入'; add('节日建筑不可进入，城镇钥匙也不生效', true); }
+  }
+
+  if (id === 'robin') {
+    add('常规营业 09:00–17:00', true);
+    windows = [{ s: S.base.s, e: S.base.e, kind: 'ok' }]; headline = '常规营业';
+    if (state.specialDay === 'festival') { level = 'closed'; windows = []; headline = '节日不可进入'; add('多数节日建筑不可进入', true); }
+    else if (val('robinBuilding') === 'yes') { level = 'closed'; windows = []; headline = '全天关闭（罗宾正在农场施工）'; add('罗宾正在农场施工时全天关店，柜台技巧不可用', true); }
+    else if (wd === 1) {
+      if (w === 'rain') { level = 'ok'; windows = [{ s: S.base.s, e: S.base.e, kind: 'ok' }]; headline = '雨天照常营业 09:00–17:00'; add('普通下雨的周二：雨天日程优先，商店按普通时段营业', true); }
+      else if (w === 'unknown') { level = 'unknown'; windows = []; headline = '暂按休息（天气未知，周二例外无法判断）'; add('普通周二与雨天例外的判定依赖天气', true); }
+      else {
+        level = 'closed'; windows = [{ s: 580, e: 590, kind: 'tip', label: '约 9:40 在柜台等候，罗宾经过时可尝试交易' }];
+        headline = '今日休息（周二）';
+        add('普通周二正式休息', true);
+        add('条件性交易窗口：约 9:40 罗宾前往皮埃尔途中经过柜台，可短暂交易（约时、瞬时、可尝试）', true, '研究材料 · 固定修订 + 官方论坛玩家复现', '低至中等');
+        add('次要技巧：约 20:00 罗宾回家经过柜台，依赖返程与进门时机', true, '研究材料 · 固定修订', '低至中等');
+        add('约 9:40 的早间机会不要求城镇钥匙（房屋 9:00 通常已可进入）', true);
+        if (val('resortUnlocked') === 'yes') { level = 'unknown'; headline = '暂按不可用（罗宾周二可能前往姜岛度假村）'; add('度假村已解锁但当天是否出行未知，普通周二路线不再可靠', true); }
+        else add('姜岛度假村未解锁，周二随机分支不适用', false);
+      }
+    }
+    if (val('keyToTown') === 'yes' && level !== 'ok') add('城镇钥匙只改变能否在锁门时进入建筑，不改变罗宾是否在柜台附近', true);
+  }
+
+  if (id === 'clint') {
+    add('常规办理 09:00–16:00', true);
+    windows = [{ s: S.base.s, e: S.base.e, kind: 'ok' }]; headline = '可办理 09:00–16:00';
+    if (state.specialDay === 'festival') {
+      level = 'closed'; windows = []; headline = '节日关闭；升级进度不暂停';
+      add('白天型节日导致商店关闭，但加工倒计时继续', true);
+    } else if (date.season === 3 && date.day === 16) {
+      level = 'unknown'; windows = [{ s: 540, e: 630, kind: 'warn' }];
+      headline = '冬 16 日：10:30 前办理';
+      add('冬 16 日 Clint 约 10:30 后离店', true);
+    } else if (wd === 4 && val('communityCenter') === 'restored') {
+      if (w === 'rain') { level = 'ok'; windows = [{ s: S.base.s, e: S.base.e, kind: 'ok' }]; headline = '周五雨天照常办理 09:00–16:00'; add('社区中心修复后的周五，下雨时照常办理', true); }
+      else if (w === 'unknown') { level = 'unknown'; windows = []; headline = '暂按不可用（天气未知）'; add('周五例外依赖天气', true); }
+      else { level = 'closed'; windows = []; headline = 'Clint 不在店内（社区中心修复后周五，非雨天）'; add('社区中心修复后的周五非雨天不可办理', true); }
+    } else if (wd === 4 && val('communityCenter') === 'unknown') {
+      level = 'unknown'; windows = []; headline = '暂按不可用（社区中心状态未知）'; add('周五例外依赖社区中心状态', true);
+    }
+    if (w === 'greenRain' && state.currentGameDay.year === 1) { level = 'closed'; windows = []; headline = '第 1 年绿雨：Clint 不在店内'; add('第 1 年绿雨日 Clint 前往酒吧', true); }
+    add('技巧：16:00 前已进入店内时可能可继续办理（待实机确认具体截止点）', true, '研究材料 · Wiki 称门 16:00 锁', '待实机校准');
+    if (val('resortUnlocked') === 'yes') add('姜岛度假村已开放：Clint 可能随机在周五离店，未来日期无法静态确定', true, '研究材料 · 黄色「可能离店」');
+    add('城镇钥匙只能改变进门限制，不能保证 Clint 在柜台', true);
+  }
+
+  const hasTip = windows.some(x => x.kind === 'tip' || x.kind === 'warn');
+  return { level, headline, windows, rules, hasTip };
+}
+
+// 工具升级状态机
+function upgradeInfo(date) {
+  const u = state.upgrade;
+  if (!u) return null;
+  const done = addDays(parseDkey(u.delivered), 2);   // u.delivered 是日期键字符串，必须先解析
+  const isDone = cmpDate(date, done) >= 0;
+  const status = u.taken ? '已取回' : isDone ? '待取回' : '升级中';
+  const clint = shopStatus('clint', date);
+  const earliest = clint.level === 'ok' ? date : null;
+  return { u, done, status, clint, earliest, mat: UPGRADE[u.to].mat, fee: u.tool === 'trash' ? UPGRADE[u.to].fee / 2 : UPGRADE[u.to].fee };
+}
+function upgradePreview(tool, to) {
+  const from = UPGRADE[to].from;
+  const fee = tool === 'trash' ? UPGRADE[to].fee / 2 : UPGRADE[to].fee;
+  return { from, to, mat: UPGRADE[to].mat, fee };
+}
+
+// 作物批次（最薄体现：只按数据字段推算日期，不做逐日生长模拟）
+function batchFrom(act) {
+  if (act.type !== 'plant' || !act.done) return null;
+  const b = state.batches.find(x => x.fromActivity === act.id);
+  if (b) return b;
+  const crop = CROPS.find(c => c[0] === act.crop) || CROPS[0];
+  const planted = act.doneDate || dkey(state.viewingDay);
+  const plantDate = parseDkey(planted);
+  const verified = (act.env || 'open') === 'open' && (act.fert || 'none') === 'none' && crop[1].includes(SEASON_NAMES[state.viewingDay.season]);
+  const nb = {
+    id: uid(), activityId: act.id, fromActivity: act.id, crop: crop[0], planted,
+    tiles: Number(act.tiles || (act.workload && act.workload.tiles) || 0) || null,
+    env: act.env || 'open', fert: act.fert || 'none',
+    growth: crop[2], regrow: crop[3], verified,
+    firstHarvest: dkey(addDays(plantDate, crop[2])),
+  };
+  state.batches.push(nb);
+  return nb;
+}
+function parseDkey(k) { const p = String(k).split('-').map(Number); return { year: p[0], season: p[1], day: p[2] }; }
+
+// 重估预览：在临时改写状态下比较每个活动「改前 / 改后」的结论
+function withState(key, value, fn) {
+  const prev = state.playerState[key];
+  state.playerState[key] = { value, effectiveFrom: prev.effectiveFrom };
+  try { return fn(); } finally { state.playerState[key] = prev; }
+}
+// 活动结论 = 系统估算时长（浇水）或规则判断结论（门店卡片）；受保护记录与已完成记录返回 null
+function conclude(a) {
+  if (a.done) return null;
+  if (TYPES[a.type].timeInput === 'workload') {
+    if (a.manualDuration != null) return null;              // 手填时长受保护，重估不覆盖
+    const e = estimateWater(a);
+    if (e.ok) return { kind: 'time', minutes: e.minutes, text: '系统估算 ' + fmtDur(e.minutes) };
+    const p = priorityDuration(a.type);
+    return { kind: 'time', minutes: p.minutes, text: '降级为按时间预留 ' + fmtDur(p.minutes) + '（' + e.reasons.join('；') + '）' };
+  }
+  if (a.type === 'shop') return { kind: 'text', text: SHOPS[a.shop].name + '：' + shopStatus(a.shop, state.viewingDay).headline };
+  if (a.type === 'toolTake') {
+    const u = upgradeInfo(state.viewingDay);
+    return { kind: 'text', text: u ? '柜台：' + u.clint.headline : '（当前无升级流程）' };
+  }
+  if (a.type === 'plant' || a.type === 'harvest') return null;
+  return null;
+}
+function previewStateChange(key, value, effectiveFrom) {
+  const out = [];
+  for (const a of state.activities) {
+    const ad = a.date ? parseDkey(a.date) : state.viewingDay;
+    if (effectiveFrom && cmpDate(ad, effectiveFrom) < 0) continue;   // 生效日期之前的活动不受影响
+    const before = conclude(a);
+    if (!before) continue;
+    const after = withState(key, value, () => conclude(a));
+    if (!after || after.text === before.text) continue;
+    out.push({ a, from: before, to: after });
+  }
+  return out;
+}
+
+/* =====================================================================================
+   4 · 变更操作
+   ===================================================================================== */
+function newActivity(type, start) {
+  const s = start != null ? start : nextFreeStart();
+  const seedV = ui.seed[type];
+  const a = {
+    id: uid(), type, date: dkey(state.viewingDay), start: fmtT(s), done: false,
+    goals: [], note: '', repeat: null,
+    manualDuration: null,                                    // 手填值：一旦写入即优先于整条预留链
+    seedOverride: seedV != null ? seedV : null,              // 锚定对照用的强制初始值
+    workload: type === 'water' ? { tiles: 20, density: 'normal' } : null,
+  };
+  if (type === 'plant') { a.crop = CROPS.find(c => c[1].includes(SEASON_NAMES[state.viewingDay.season]))[0]; a.env = 'open'; a.fert = 'none'; a.tiles = 0; }
+  if (type === 'shop') { a.shop = 'pierre'; a.items = []; }
+  if (type === 'toolGive') { a.tool = 'axe'; a.to = nextLevel(state.toolLevels.axe); }
+  if (type === 'toolTake') { a.tool = state.upgrade ? state.upgrade.tool : 'axe'; a.to = state.upgrade ? state.upgrade.to : 'copper'; }
+  if (type === 'travel' || type === 'fishing' || type === 'mining') { a.place = ''; a.target = ''; if (type === 'travel') { a.from = ''; a.toPlace = ''; } }
+  if (type === 'custom') a.name = '自定义活动';
+  state.activities.push(a);
+  ui.sel = a.id;
+  return a;
+}
+function nextLevel(lv) { const i = LEVELS.indexOf(lv); return LEVELS[Math.min(i + 1, 4)]; }
+function nextFreeStart() {
+  const g = freeGaps().find(x => x.e - x.s >= 30);
+  return g ? g.s : DAY_START;
+}
+function moveStart(id, s) {
+  const a = getAct(id); if (!a) return;
+  a.start = fmtT(clamp(snap(s), DAY_START, DAY_END - STEP));
+}
+function setDuration(id, m) {
+  const a = getAct(id); if (!a) return;
+  const v = Math.max(STEP, snap(m));                 // 10 游戏分钟粒度
+  if (a.seedOverride != null && a.seedOverride !== v) {
+    state.anchorLog.push({ type: a.type, seed: a.seedOverride, final: v, at: dkey(state.viewingDay) });
+    a.seedOverride = null;                            // 对照初始值只影响新建时的起点
+  }
+  a.manualDuration = v;
+  state.lastReserved[a.type] = { minutes: v, date: dkey(state.viewingDay) };   // 最近一次预留
+  save();
+}
+function restoreDuration(id) {
+  const a = getAct(id); if (!a) return;
+  a.manualDuration = null; a.seedOverride = null; save();
+}
+// 交换两项的开始时刻（↑↓ 与「拖到另一张卡」共用同一语义）
+function swapStarts(a, b) {
+  const x = getAct(a), y = getAct(b);
+  if (!x || !y) return;
+  const s = x.start; x.start = y.start; y.start = s;
+  save();
+}
+function completeAct(id, on) {
+  const a = getAct(id); if (!a) return;
+  a.done = !!on;
+  if (on) {
+    a.doneDate = dkey(state.viewingDay);
+    if (a.type === 'plant') batchFrom(a);
+    if (a.type === 'toolGive') {
+      // 完成交付才进入「升级中」；计划日期本身不改变工具状态
+      state.upgrade = { tool: a.tool, from: UPGRADE[a.to].from, to: a.to, delivered: dkey(state.viewingDay), taken: false };
+    }
+    if (a.type === 'toolTake' && state.upgrade) { state.upgrade.taken = true; state.toolLevels[state.upgrade.tool] = state.upgrade.to; }
+  } else {
+    delete a.doneDate;
+    if (a.type === 'toolGive' && state.upgrade && state.upgrade.delivered === dkey(state.viewingDay)) state.upgrade = null;
+  }
+  save();
+}
+
+/* =====================================================================================
+   5 · 表单（三个变体共享的字段部件，但各自的挂载方式不同）
+   ===================================================================================== */
+function paramFields(a) {
+  const opt = (v, cur, label) => '<option value="' + esc(v) + '"' + (String(cur) === String(v) ? ' selected' : '') + '>' + esc(label || v) + '</option>';
+  const f = (field, inner) => '<label data-f="' + field + '"><span class="lb">' + inner + '</span></label>';
+  let h = '';
+  switch (a.type) {
+    case 'plant':
+      h += '<label><span class="lb">作物（PC 原版 1.6.15 数据矩阵）</span><select data-field="crop" data-id="' + a.id + '">' +
+        CROPS.map(c => opt(c[0], a.crop, c[0] + '（首' + c[2] + '天' + (c[3] ? '，重复' + c[3] + '天' : '') + '｜' + c[1].join('') + '）')).join('') + '</select></label>';
+      h += '<label><span class="lb">环境</span><select data-field="env" data-id="' + a.id + '">' + opt('open', a.env, '普通室外耕地') + opt('greenhouse', a.env, '温室') + opt('other', a.env, '其他特殊条件') + '</select></label>';
+      h += '<label><span class="lb">肥料</span><select data-field="fert" data-id="' + a.id + '">' + opt('none', a.fert, '无肥料') + opt('some', a.fert, '有肥料') + '</select></label>';
+      h += '<label><span class="lb">格数（可选）</span><input type="number" min="0" step="1" value="' + (a.tiles || 0) + '" data-field="tiles" data-num="1" data-id="' + a.id + '"></label>';
+      h += (a.env === 'open' && a.fert === 'none')
+        ? '<div class="okbox">规则已验证：种植完成后按实际完成日期激活批次，预计首次收获 ' + esc(dkey(addDays(parseDkey(dkey(state.viewingDay)), (CROPS.find(c => c[0] === a.crop) || CROPS[0])[2]))) + '</div>'
+        : '<div class="warnbox">规则未验证：该条件不在 V1 已核验矩阵内。仍可建立批次，但不自动推算生长与收获日期，由玩家手动记录预计日期。</div>';
+      break;
+    case 'water': {
+      const e = estimateWater(a);
+      h += '<label><span class="lb">待人工浇水格数</span><input type="number" min="1" step="1" value="' + ((a.workload || {}).tiles || 0) + '" data-field="tiles" data-num="1" data-id="' + a.id + '" data-live="1"></label>';
+      h += '<label><span class="lb">田地密集程度</span><select data-field="density" data-id="' + a.id + '" data-live="1">' +
+        Object.keys(WATER_CALIB.density).map(k => opt(k, (a.workload || {}).density, WATER_CALIB.density[k].label)).join('') + '</select></label>';
+      h += '<div class="meta" data-est="' + a.id + '">' + estimateHtml(a) + '</div>';
+      break;
+    }
+    case 'harvest':
+      h += '<label><span class="lb">关联作物批次</span><select data-field="batchId" data-id="' + a.id + '"><option value="">（不关联）</option>' +
+        state.batches.map(b => opt(b.id, a.batchId, b.crop + ' · 种于 ' + b.planted)).join('') + '</select></label>';
+      h += '<div class="hint">收获按时间预留；工作量估算留作后续（#3 结论）。</div>';
+      break;
+    case 'shop': {
+      const st = shopStatus(a.shop || 'pierre', state.viewingDay);
+      h += '<label><span class="lb">门店</span><select data-field="shop" data-id="' + a.id + '" data-live="1">' +
+        Object.keys(SHOPS).map(k => opt(k, a.shop, SHOPS[k].name + '（' + SHOPS[k].hours + '）')).join('') + '</select></label>';
+      h += '<div data-est="' + a.id + '">' + shopCardHtml(a.shop || 'pierre', st, true) + '</div>';
+      const items = a.items || [];
+      h += '<h4>购物清单项（自由填写，不校验价格与库存）</h4>';
+      h += items.map((it, i) => '<div class="row" style="margin-bottom:4px"><input type="text" style="flex:1" value="' + esc(it.name) + '" data-field="itemName" data-i="' + i + '" data-id="' + a.id + '" placeholder="物品名称"><input type="number" min="1" value="' + it.qty + '" data-field="itemQty" data-i="' + i + '" data-num="1" data-id="' + a.id + '" style="width:64px"><button class="ghost" data-act="delitem" data-id="' + a.id + '" data-i="' + i + '">✕</button></div>').join('');
+      h += '<button data-act="additem" data-id="' + a.id + '">＋ 添加清单项</button>';
+      break;
+    }
+    case 'toolGive': {
+      const pv = upgradePreview(a.tool, a.to);
+      h += '<label><span class="lb">工具</span><select data-field="tool" data-id="' + a.id + '" data-live="1">' +
+        Object.keys(TOOLS).map(k => opt(k, a.tool, TOOLS[k] + '（当前 ' + LEVEL_NAMES[state.toolLevels[k]] + '）')).join('') + '</select></label>';
+      h += '<label><span class="lb">目标等级（只能升一级）</span><select data-field="to" data-id="' + a.id + '" data-live="1">' +
+        [nextLevel(state.toolLevels[a.tool])].map(l => opt(l, a.to, LEVEL_NAMES[l])).join('') + '</select></label>';
+      h += '<div class="panelbox" data-est="' + a.id + '">' + upgradeRefHtml(a) + '</div>';
+      break;
+    }
+    case 'toolTake': {
+      const up = upgradeInfo(state.viewingDay);
+      if (!up) h += '<div class="warnbox">当前没有升级中或待取回的工具。先完成一次「工具升级交付」。</div>';
+      else {
+        h += '<div class="panelbox"><div class="cardhead"><span class="t">' + TOOLS[up.u.tool] + ' → ' + LEVEL_NAMES[up.u.to] + '</span><span class="chip ' + (up.status === '待取回' ? 'ok' : 'warn') + '">' + up.status + '</span></div>' +
+          '<dl class="kv"><dt>实际交付日</dt><dd>' + up.u.delivered + '（D）</dd>' +
+          '<dt>完成日期</dt><dd>' + dkey(up.done) + '（D+2，节日不暂停）</dd>' +
+          '<dt>最早可取回</dt><dd>' + (up.earliest ? dkey(up.earliest) : 'D+2 或其后的首个柜台可交易日') + '</dd>' +
+          '<dt>背包空位</dt><dd>' + (state.playerState.backpackFree.value === 'yes' ? '有' : state.playerState.backpackFree.value === 'no' ? '没有（需清出一个空位）' : '未知') + '</dd></dl></div>';
+        h += '<div data-est="' + a.id + '">' + shopCardHtml('clint', up.clint, true) + '</div>';
+        h += '<div class="hint">完成取回后才更新工具等级（CONTEXT.md · 工具升级状态）。</div>';
+      }
+      break;
+    }
+    case 'travel':
+      h += '<label><span class="lb">起点（可选）</span><input type="text" value="' + esc(a.from || '') + '" data-field="from" data-id="' + a.id + '" placeholder="例如：农场"></label>';
+      h += '<label><span class="lb">终点（可选）</span><input type="text" value="' + esc(a.toPlace || '') + '" data-field="toPlace" data-id="' + a.id + '" placeholder="例如：铁匠铺"></label>';
+      h += '<div class="hint">不估算路线；根据地点估算移动耗时属后续范围。</div>';
+      break;
+    case 'fishing':
+    case 'mining':
+      h += '<label><span class="lb">地点（可选）</span><input type="text" value="' + esc(a.place || '') + '" data-field="place" data-id="' + a.id + '" placeholder="例如：' + (a.type === 'fishing' ? '山湖' : '矿洞 40 层') + '"></label>';
+      h += '<label><span class="lb">目标（自由文本）</span><input type="text" value="' + esc(a.target || '') + '" data-field="target" data-id="' + a.id + '" placeholder="例如：' + (a.type === 'fishing' ? '钓 5 条鲈鱼' : '挖 30 铜矿') + '"></label>';
+      h += '<div class="hint">V1 不估算产出或达成目标的时间。</div>';
+      break;
+    case 'custom':
+      h += '<label><span class="lb">名称</span><input type="text" value="' + esc(a.name || '') + '" data-field="name" data-id="' + a.id + '"></label>';
+      break;
+  }
+  return h;
+}
+
+function estimateHtml(a) {
+  const e = estimateWater(a);
+  const t = actTime(a);
+  const srcTag = '<span class="tag ' + SOURCE_CLASS[t.source] + '">' + SOURCE_LABEL[t.source] + '</span>';
+  let h;
+  if (!e.ok) {
+    h = '<div class="warnbox">已降级为「按时间预留」：' + esc(e.reasons.join('；')) + '。不填写未经验证的系数。</div>' +
+        '<div>当前时长 <b>' + fmtDur(t.minutes) + '</b> ' + srcTag + '</div>';
+  } else {
+    h = '<div class="okbox">系统估算 <b>' + fmtDur(e.minutes) + '</b>（' + WATER_CALIB.version + '，适用：PC 原版 1.6.15 单人 + 已校准场景）</div>' +
+        '<ul class="rulelist">' + e.breakdown.map(b => '<li>' + esc(b.k) + '<div class="r">' + esc(b.v) + '</div></li>').join('') + '</ul>';
+    if (a.manualDuration != null) {
+      h += (a.manualDuration === e.minutes)
+        ? '<div class="infobox">当前时长与系统估算一致，但已被标为手填。</div>'
+        : '<div class="infobox">当前活动手填 <b>' + fmtDur(a.manualDuration) + '</b>，系统估算 <b>' + fmtDur(e.minutes) + '</b>：手填优先，保留估算供对照。 <button data-act="restore" data-id="' + a.id + '">恢复为系统估算</button></div>';
+    }
+    h += '<details style="margin-top:4px"><summary class="hint">校准参数（占位系数，待 #11「执行浇水耗时实测与校准」替换）</summary>' +
+      '<div class="hint">每格浇水动作 ' + WATER_CALIB.perTileMin + ' 分 · 密集 ×' + WATER_CALIB.density.dense.f + ' / 普通 ×' + WATER_CALIB.density.normal.f + ' / 分散 ×' + WATER_CALIB.density.scattered.f +
+      ' · 每次往返补水 ' + WATER_CALIB.refillMin + ' 分 · 喷壶容量 ' + Object.keys(WATER_CALIB.canCapacity).map(k => LEVEL_NAMES[k] + ' ' + WATER_CALIB.canCapacity[k]).join(' / ') +
+      ' 格 · 校准上界 ' + WATER_CALIB.maxTiles + ' 格 · 结果按 ' + STEP + ' 游戏分钟取整</div></details>';
+  }
+  return h;
+}
+function upgradeRefHtml(a) {
+  const lv = state.toolLevels[a.tool], pv = upgradePreview(a.tool, a.to);
+  const cur = LEVELS.indexOf(lv), tgt = LEVELS.indexOf(a.to);
+  const ok = tgt === cur + 1 || (a.tool === 'pan' && cur === 1 && tgt === 2);
+  return '<div class="cardhead"><span class="t">' + TOOLS[a.tool] + '：' + LEVEL_NAMES[lv] + ' → ' + LEVEL_NAMES[a.to] + '</span>' +
+    '<span class="chip ' + (ok ? 'ok' : 'bad') + '">' + (ok ? '可升级' : '不可跳级') + '</span></div>' +
+    '<dl class="kv"><dt>材料</dt><dd>' + pv.mat + '</dd><dt>费用</dt><dd>' + pv.fee.toLocaleString() + 'g</dd>' +
+    '<dt>柜台条件</dt><dd>09:00–16:00；节日/周五例外/冬 16 日见门店卡片</dd>' +
+    '<dt>一次一件</dt><dd>' + (state.upgrade && !state.upgrade.taken ? '当前已有「' + TOOLS[state.upgrade.tool] + '」在升级流程中' : '当前无其他工具在升级中') + '</dd></dl>' +
+    '<div class="hint">不追踪玩家背包材料或金钱余额；材料与费用仅为参考。</div>';
+}
+
+function shopCardHtml(id, st, withRules) {
+  const cls = st.level === 'ok' ? 'ok' : st.level === 'closed' ? 'bad' : 'warn';
+  const word = st.level === 'ok' ? '营业' : st.level === 'closed' ? '关闭' : '未知';
+  let h = '<div class="panelbox" style="margin:6px 0"><div class="cardhead"><span class="t">' + SHOPS[id].name + '</span><span class="chip ' + cls + '">' + esc(st.headline) + '</span></div>';
+  if (st.windows.length) {
+    h += '<div class="row wrap">' + st.windows.map(w => '<span class="chip ' + (w.kind === 'ok' ? 'ok' : w.kind === 'warn' ? 'warn' : 'info') + '">' +
+      (w.kind === 'ok' ? '确认可交易 ' : w.kind === 'warn' ? '条件可用 ' : '技巧 ') + fmtT(w.s) + '–' + fmtT(w.e) + (w.label ? ' · ' + esc(w.label) : '') + '</span>').join('') + '</div>';
+  } else h += '<div class="meta">无可用时段</div>';
+  if (withRules) {
+    h += '<h4>规则与来源</h4><ul class="rulelist">' + st.rules.map(r => '<li class="' + (r.applies ? '' : 'na') + '">' + esc(r.text) +
+      '<div class="r">来源：' + esc(r.src) + ' · 可信度：' + esc(r.conf) + ' · 适用 ' + RULESET + '</div></li>').join('') + '</ul>';
+  }
+  return h + '</div>';
+}
+
+function durationBlock(a) {
+  const t = actTime(a);
+  const p = priorityDuration(a.type);
+  let h = '<div class="panelbox"><div class="cardhead"><span class="t">时长</span>' +
+    '<span><span class="tag ' + SOURCE_CLASS[t.source] + '">' + SOURCE_LABEL[t.source] + '</span> <b>' + fmtDur(t.minutes) + '</b></span></div>';
+  h += '<div class="row wrap" style="margin-bottom:6px"><button data-act="dur" data-id="' + a.id + '" data-d="-10">−10m</button>' +
+    '<button data-act="dur" data-id="' + a.id + '" data-d="10">+10m</button>' +
+    '<button data-act="dur" data-id="' + a.id + '" data-d="-30">−30m</button>' +
+    '<button data-act="dur" data-id="' + a.id + '" data-d="30">+30m</button>' +
+    '<button data-act="restore" data-id="' + a.id + '" class="ghost">恢复为优先级结果</button></div>';
+  h += '<dl class="kv">' +
+    '<dt>当前活动手填值</dt><dd>' + (a.manualDuration != null ? fmtDur(a.manualDuration) : '—') + '</dd>' +
+    '<dt>个人默认</dt><dd>' + (state.personalDefaults[a.type] != null ? fmtDur(state.personalDefaults[a.type]) : '未保存') +
+      ' <button class="ghost" data-act="savepersonal" data-id="' + a.id + '">保存当前为个人默认</button>' +
+      (state.personalDefaults[a.type] != null ? ' <button class="ghost" data-act="clearpersonal" data-id="' + a.id + '">清除</button>' : '') + '</dd>' +
+    '<dt>最近一次预留</dt><dd>' + (state.lastReserved[a.type] ? fmtDur(state.lastReserved[a.type].minutes) + '（' + state.lastReserved[a.type].date + '）' : '—') + '</dd>' +
+    '<dt>系统推荐预留</dt><dd>' + fmtDur(state.defaultTable[a.type]) + ' <button class="ghost" data-act="panel" data-p="defaults">编辑默认值表</button></dd>' +
+    '</dl>';
+  h += '<div class="hint">优先级：当前活动手填值 &gt; 个人默认 &gt; 最近一次预留 &gt; 系统推荐预留。单次手填不会自动改变个人默认。</div>';
+  h += '</div>';
+  return h;
+}
+function timeBlock(a) {
+  const r = actRange(a);
+  const ov = directOverlaps(a.id);
+  let h = '<div class="panelbox"><div class="cardhead"><span class="t">时间</span><span class="chip info">' + mmssFromRange(r.s, r.e) + '</span></div>';
+  h += '<div class="row wrap"><label style="margin:0"><span class="lb">开始时刻</span><select data-field="start" data-id="' + a.id + '">' +
+    timeOptions(a.start) + '</select></label>' +
+    '<span class="meta">结束 ' + fmtT(r.e) + '（时长 ' + fmtDur(r.t.minutes) + '）</span></div>';
+  if (ov.length) h += '<div class="badbox">与 ' + ov.map(o => TYPES[o.type].name).join('、') + ' 直接重叠。保留双方原安排，仅提示。</div>';
+  if (r.e > DAY_END) h += '<div class="warnbox">超出游戏日 ' + fmtDur(r.e - DAY_END) + '。不自动截短或移动。</div>';
+  h += '<label style="margin-top:6px"><span class="lb">备注</span><input type="text" value="' + esc(a.note || '') + '" data-field="note" data-id="' + a.id + '"></label>';
+  h += '<label><span class="lb">每天重复（次数，0=不重复；按日历天，不顺延）</span><input type="number" min="0" max="28" value="' + (a.repeat || 0) + '" data-field="repeat" data-num="1" data-id="' + a.id + '"></label>';
+  h += '</div>';
+  return h;
+}
+function timeOptions(cur) {
+  let h = '';
+  for (let v = DAY_START; v <= DAY_END - STEP; v += STEP) h += '<option value="' + fmtT(v) + '"' + (fmtT(v) === cur ? ' selected' : '') + '>' + fmtT(v) + '</option>';
+  return h;
+}
+function goalBlock(a) {
+  let h = '<div class="panelbox"><div class="cardhead"><span class="t">目标关联</span><button class="ghost" data-act="panel" data-p="goals">管理目标</button></div>';
+  if (!state.goals.length) return h + '<div class="empty">还没有长期目标。活动勾选完成不代表目标或步骤达成。</div></div>';
+  for (const g of state.goals) {
+    const on = (a.goals || []).includes(g.id);
+    h += '<div class="row" style="margin-bottom:3px"><label style="margin:0;flex:1"><input type="checkbox" data-field="goal" data-gid="' + g.id + '" data-id="' + a.id + '"' + (on ? ' checked' : '') + '> ' + esc(g.title) + '</label><span class="meta">' + (g.steps || []).length + ' 步</span></div>';
+    for (const s of (g.steps || [])) {
+      const son = (a.goals || []).includes(s.id);
+      h += '<div class="row" style="margin:0 0 3px 18px"><label style="margin:0;flex:1"><input type="checkbox" data-field="goal" data-gid="' + s.id + '" data-id="' + a.id + '"' + (son ? ' checked' : '') + '> ' + esc(s.title) + '</label></div>';
+    }
+  }
+  return h + '</div>';
+}
+function fullEditor(a, opts) {
+  opts = opts || {};
+  let h = '<div class="cardhead"><span class="t">' + TYPES[a.type].icon + ' ' + TYPES[a.type].name + '</span>' +
+    '<span class="row"><button data-act="dup" data-id="' + a.id + '" class="ghost">复制</button><button data-act="del" data-id="' + a.id + '" class="ghost">删除</button></span></div>';
+  h += '<div class="meta" style="margin-bottom:8px">' + TYPES[a.type].blurb + '</div>';
+  h += '<label><span class="lb">完成状态</span><input type="checkbox" data-field="done" data-id="' + a.id + '"' + (a.done ? ' checked' : '') + '> 已完成（' + (a.done ? '完成于 ' + (a.doneDate || '—') : '未完成') + '）</label>';
+  h += paramFields(a);
+  if (opts.time !== false) h += timeBlock(a);
+  h += durationBlock(a);
+  h += goalBlock(a);
+  return h;
+}
+
+/* =====================================================================================
+   6 · 顶部栏与共享面板
+   ===================================================================================== */
+function renderTopbar() {
+  const d = state.viewingDay, cd = state.currentGameDay;
+  const over = overrun(), conf = layoutInfo().conflicts;
+  const tb = $('#topbar');
+  tb.innerHTML =
+    '<span class="protobadge">PROTOTYPE</span>' +
+    '<span class="tbgroup"><span class="k">当前游戏日</span><button class="ghost" data-act="shiftcur" data-d="-1">◀</button><b>' + dshort(cd) + '</b><button class="ghost" data-act="shiftcur" data-d="1">▶</button></span>' +
+    '<span class="tbgroup"><span class="k">查看日程</span><button class="ghost" data-act="shiftview" data-d="-1">◀</button><b>' + dstr(d) + '（' + WEEKDAYS[weekdayOf(d)] + '）</b><button class="ghost" data-act="shiftview" data-d="1">▶</button></span>' +
+    '<span class="tbsep"></span>' +
+    '<span class="tbgroup"><span class="k">模式</span><select data-global="mode"><option value="single"' + (state.mode === 'single' ? ' selected' : '') + '>单人</option><option value="multi"' + (state.mode === 'multi' ? ' selected' : '') + '>多人（手动预留）</option></select></span>' +
+    '<span class="tbgroup"><span class="k">天气</span><select data-global="weather">' +
+      ['sunny|晴朗', 'rain|下雨', 'greenRain|绿雨', 'unknown|未知'].map(x => { const p = x.split('|'); return '<option value="' + p[0] + '"' + (state.weather === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') + '</select></span>' +
+    '<span class="tbgroup"><span class="k">特殊日</span><select data-global="specialDay"><option value="none"' + (state.specialDay === 'none' ? ' selected' : '') + '>无</option><option value="festival"' + (state.specialDay === 'festival' ? ' selected' : '') + '>节日</option></select></span>' +
+    '<span class="chip mute">' + RULESET + '</span>' +
+    '<span class="tbsep"></span>' +
+    '<span class="tbgroup"><button data-act="panel" data-p="state">玩家状态 ' + Object.keys(STATE_DEFS).filter(k => state.playerState[k].value !== STATE_DEFS[k].def).length + '</button>' +
+    '<button data-act="panel" data-p="goals">长期目标 ' + state.goals.length + '</button>' +
+    '<button data-act="panel" data-p="batches">作物批次 ' + state.batches.length + '</button>' +
+    '<button data-act="panel" data-p="defaults">推荐预留值表</button>' +
+    '<button data-act="panel" data-p="anchor">锚定对照</button>' +
+    '<button data-act="panel" data-p="scenario">场景</button>' +
+    '<button data-act="panel" data-p="storage">存储</button></span>' +
+    '<span class="tbsep"></span>' +
+    '<span class="tbgroup">' +
+      (conf.length ? '<span class="chip bad">' + conf.length + ' 个冲突组</span>' : '<span class="chip ok">无冲突</span>') +
+      (over.length ? '<span class="chip warn">超出游戏日 ' + over.map(o => TYPES[o.a.type].name + ' ' + fmtDur(o.over)).join('、') + '</span>' : '') +
+      '<span class="chip info">活动 ' + state.activities.length + '</span>' +
+    '</span>' +
+    '<span class="tbgroup" style="margin-left:auto"><button class="primary" data-act="quickadd">＋ 添加活动</button></span>';
+}
+
+function renderSwitcher() {
+  const cur = curVariant();
+  $('#switcher').innerHTML =
+    '<button data-act="variant" data-v="-1">◀</button>' +
+    '<span class="lab">' + cur.k + ' · ' + cur.name + ' <span class="n">（← → 切换 · 数据共享）</span></span>' +
+    '<button data-act="variant" data-v="1">▶</button>';
+}
+
+function renderOverlay() {
+  const ov = $('#overlay'); const m = $('#modal');
+  if (!ui.panel && !ui.pending) { ov.classList.remove('on'); return; }
+  ov.classList.add('on');
+  const P = ui.panel;
+  let h = '';
+  if (ui.pending) h += panelPending();                 // 重估预览永远最优先显示
+  if (P) {
+    h += '<div class="spread" style="margin-bottom:8px"><span class="protobadge">PROTOTYPE 面板</span><button data-act="panel" data-p="">关闭 ✕</button></div>';
+    if (P === 'state') h += panelState();
+    if (P === 'goals') h += panelGoals();
+    if (P === 'batches') h += panelBatches();
+    if (P === 'defaults') h += panelDefaults();
+    if (P === 'anchor') h += panelAnchor();
+    if (P === 'scenario') h += panelScenario();
+    if (P === 'storage') h += panelStorage();
+    if (P === 'add') h += panelAdd();
+    if (P === 'edit') { const a = getAct(ui.sel); h += a ? fullEditor(a) : '<div class="empty">活动已删除</div>'; }
+  }
+  m.innerHTML = h;
+}
+
+function panelState() {
+  let h = '<h3>玩家状态</h3><div class="hint" style="margin-bottom:8px">渐进收集：在相关活动首次需要时才记录。修改须带「状态生效日期」，确认前先预览受影响的规则判断与未完成系统估算活动。</div>';
+  for (const k in STATE_DEFS) {
+    const def = STATE_DEFS[k], cur = state.playerState[k];
+    h += '<div class="panelbox"><div class="row wrap"><b style="min-width:130px">' + def.label + '</b>' +
+      '<select data-state="' + k + '" data-stateval="1">' + def.values.map(v => '<option value="' + v + '"' + (cur.value === v ? ' selected' : '') + '>' + def.names[v] + '</option>').join('') + '</select>' +
+      '<span class="k meta">生效日期</span><input type="text" placeholder="如 春3 或留空=立即" value="' + esc(cur.effectiveFrom ? dshort(cur.effectiveFrom) : '') + '" data-state="' + k + '" data-stateeff="1" style="width:110px">' +
+      '<span class="tag mute">被 ' + def.usedBy + ' 使用</span></div></div>';
+  }
+  h += '<h4>工具等级</h4><div class="panelbox"><div class="row wrap">' + Object.keys(TOOLS).map(k =>
+    '<span class="chip">' + TOOLS[k] + ' · ' + LEVEL_NAMES[state.toolLevels[k]] + '</span>').join('') + '</div>' +
+    '<div class="hint">工具等级在完成「工具取回」后更新；此处只读，便于核对该联动。</div></div>';
+  h += '<h4>当前升级流程</h4><div class="panelbox">' + (state.upgrade
+    ? '<dl class="kv"><dt>工具</dt><dd>' + TOOLS[state.upgrade.tool] + ' → ' + LEVEL_NAMES[state.upgrade.to] + '</dd><dt>实际交付日</dt><dd>' + state.upgrade.delivered + '</dd><dt>状态</dt><dd>' + (state.upgrade.taken ? '已取回' : '升级中 / 待取回') + '</dd></dl>'
+    : '<div class="empty">无</div>') + '</div>';
+  return h;
+}
+function parseLooseDate(txt) {
+  if (!txt) return null;
+  const m = /^([春夏秋冬])(\d{1,2})$/.exec(String(txt).trim());
+  if (!m) return null;
+  return { year: state.viewingDay.year, season: SEASON_NAMES.indexOf(m[1]), day: Number(m[2]) };
+}
+function panelGoals() {
+  let h = '<h3>长期目标</h3><div class="row" style="margin-bottom:8px"><input type="text" id="newGoal" placeholder="新目标名称" style="flex:1"><button class="primary" data-act="addgoal">添加</button></div>';
+  if (!state.goals.length) return h + '<div class="empty">还没有目标。</div>';
+  for (const g of state.goals) {
+    const linked = state.activities.filter(a => (a.goals || []).includes(g.id)).length;
+    h += '<div class="panelbox"><div class="cardhead"><span class="t">' + esc(g.title) + '</span><span class="row"><span class="meta">关联活动 ' + linked + '</span><button class="ghost" data-act="delgoal" data-id="' + g.id + '">删除</button></span></div>';
+    for (const s of (g.steps || [])) {
+      h += '<div class="row"><label style="margin:0;flex:1"><input type="checkbox" data-act="step" data-gid="' + g.id + '" data-sid="' + s.id + '"' + (s.done ? ' checked' : '') + '> ' + esc(s.title) + '</label>' +
+        '<span class="meta">' + state.activities.filter(a => (a.goals || []).includes(s.id)).length + ' 个活动</span>' +
+        '<button class="ghost" data-act="delstep" data-gid="' + g.id + '" data-sid="' + s.id + '">✕</button></div>';
+    }
+    h += '<div class="row" style="margin-top:6px"><input type="text" placeholder="新步骤" data-stepinput="' + g.id + '" style="flex:1"><button data-act="addstep" data-id="' + g.id + '">＋ 步骤</button></div>';
+    h += '<div class="hint">步骤不再包含下级步骤；活动勾选完成不代表目标或步骤达成（#5 结论）。</div></div>';
+  }
+  return h;
+}
+function panelBatches() {
+  let h = '<h3>作物批次</h3><div class="hint" style="margin-bottom:8px">批次在「种植」活动标记完成后按实际完成日期激活。本原型只按数据字段推算日期，不做逐日生长模拟。</div>';
+  if (!state.batches.length) return h + '<div class="empty">还没有批次。添加一个「种植」活动并标记完成即可建立。</div>';
+  h += '<table class="grid"><tr><th>作物</th><th>种植日</th><th>格数</th><th>首次收获（预计）</th><th>重复收获</th><th>规则</th></tr>' +
+    state.batches.map(b => '<tr><td>' + esc(b.crop) + '</td><td>' + b.planted + '</td><td>' + (b.tiles || '—') + '</td><td>' + b.firstHarvest + '</td><td>' + (b.regrow ? b.regrow + ' 天' : '一次收获') + '</td><td>' + (b.verified ? '<span class="chip ok">已验证</span>' : '<span class="chip warn">规则未验证</span>') + '</td></tr>').join('') + '</table>';
+  return h;
+}
+function panelDefaults() {
+  let h = '<h3>推荐预留默认值表</h3><div class="hint" style="margin-bottom:8px">这是「系统推荐预留」的唯一来源，也是 V1 规格需要锁定的表。请在此直接改成你想要的值；导出的就是最终表。</div>';
+  h += '<table class="grid"><tr><th>活动</th><th>时间方式</th><th>系统推荐预留</th><th>个人默认</th><th>最近一次</th></tr>';
+  for (const t of TYPE_ORDER) {
+    h += '<tr><td>' + TYPES[t].icon + ' ' + TYPES[t].name + '</td><td>' + (TYPES[t].timeInput === 'workload' ? '按工作量估算（浇水）' : '按时间预留') + '</td>' +
+      '<td><input type="number" min="10" step="10" value="' + state.defaultTable[t] + '" data-default="' + t + '"> 分</td>' +
+      '<td>' + (state.personalDefaults[t] != null ? fmtDur(state.personalDefaults[t]) : '—') + '</td>' +
+      '<td>' + (state.lastReserved[t] ? fmtDur(state.lastReserved[t].minutes) : '—') + '</td></tr>';
+  }
+  h += '</table><div class="row" style="margin-top:10px"><button data-act="exportdefaults">复制为 JSON</button><button data-act="panel" data-p="">完成</button></div>';
+  h += '<div class="hint" style="margin-top:6px">浇水没有推荐预留值，因为它走按工作量估算；超出校准范围时会降级到按时间预留，此时才用到上表的值。</div>';
+  return h;
+}
+function panelAnchor() {
+  let h = '<h3>锚定效应对照</h3><div class="hint" style="margin-bottom:8px">给某类活动强制一个「对照初始值」，新建活动时就会用它而非优先级结果。之后你把它改成多少，都会记录在下面的表里，用来观察初始值对最终手填值的影响。</div>';
+  h += '<div class="row wrap" style="margin-bottom:10px"><select id="anchorType">' + TYPE_ORDER.map(t => '<option value="' + t + '"' + (ui.anchorType === t ? ' selected' : '') + '>' + TYPES[t].name + '</option>').join('') + '</select>';
+  h += '<select id="anchorMult"><option value="0.5">系统推荐 × 0.5</option><option value="1" selected>系统推荐 × 1</option><option value="1.5">系统推荐 × 1.5</option><option value="2">系统推荐 × 2</option></select>';
+  h += '<button class="primary" data-act="anchornew">用对照初始值新建活动</button>';
+  h += '<button data-act="anchorclear">清除所有对照初始值</button></div>';
+  const actives = Object.keys(ui.seed);
+  h += '<div class="panelbox"><b>当前对照初始值</b>' + (actives.length ? actives.map(t => '<div class="row"><span style="flex:1">' + TYPES[t].name + '</span><span class="tag proto">' + fmtDur(ui.seed[t]) + '</span></div>').join('') : '<div class="empty">无</div>') + '</div>';
+  h += '<h4>观察记录（初始值 → 最终手填值）</h4>';
+  if (!state.anchorLog.length) h += '<div class="empty">还没有记录。用上面的按钮新建一个活动并修改它的时长。</div>';
+  else h += '<table class="grid"><tr><th>活动</th><th>对照初始值</th><th>最终手填值</th><th>偏移</th><th>日期</th></tr>' +
+    state.anchorLog.map(l => '<tr><td>' + TYPES[l.type].name + '</td><td>' + fmtDur(l.seed) + '</td><td>' + fmtDur(l.final) + '</td><td>' + (l.final - l.seed >= 0 ? '+' : '') + (l.final - l.seed) + 'm</td><td>' + l.at + '</td></tr>').join('') + '</table>';
+  return h;
+}
+function panelScenario() {
+  return '<h3>场景种子</h3><div class="hint" style="margin-bottom:10px">用于覆盖 #6 要求的四个场景。会覆盖当前数据。</div>' +
+    '<div class="row wrap"><button class="primary" data-act="seed" data-s="fresh">1 · 首次使用（清空一切）</button>' +
+    '<button data-act="seed" data-s="empty">2 · 空状态（有状态与目标，无活动）</button>' +
+    '<button data-act="seed" data-s="conflict">3 · 冲突 + 空闲 + 超出游戏日 + 受保护记录</button>' +
+    '<button data-act="seed" data-s="restored">4 · 恢复已保存数据（重新读 localStorage）</button></div>' +
+    '<div class="hint" style="margin-top:10px">当前场景：' + esc(state.scenario) + '</div>';
+}
+function panelStorage() {
+  const raw = (() => { try { return localStorage.getItem(LS_KEY); } catch (e) { return null; } })();
+  return '<h3>本地保存与恢复</h3>' +
+    '<dl class="kv"><dt>存储键</dt><dd>' + LS_KEY + '</dd>' +
+    '<dt>当前大小</dt><dd>' + (raw ? raw.length + ' 字符' : '（尚未写入）') + '</dd>' +
+    '<dt>保存时机</dt><dd>每次改动后立即写入</dd>' +
+    '<dt>恢复时机</dt><dd>打开页面时自动读取</dd></dl>' +
+    '<div class="row" style="margin-top:10px"><button class="danger" data-act="wipe">清空 PROTOTYPE 数据并重置</button>' +
+    '<button data-act="redump">立即写入一次</button></div>' +
+    '<div class="hint" style="margin-top:8px">刷新页面（F5）即可验证「恢复已保存数据」；清空后刷新会回到首次使用状态。</div>';
+}
+function panelAdd() {
+  let h = '<h3>添加活动</h3><div class="hint" style="margin-bottom:8px">新活动的时长按优先级取：个人默认 → 最近一次预留 → 系统推荐预留。</div><div class="row wrap">';
+  for (const t of TYPE_ORDER) h += '<button data-act="new" data-t="' + t + '">' + TYPES[t].icon + ' ' + TYPES[t].name + ' <span class="meta">' + fmtDur(priorityDuration(t).minutes) + '</span></button>';
+  h += '</div>';
+  if (Object.keys(ui.seed).length) h += '<div class="infobox" style="margin-top:10px">存在对照初始值：' + Object.keys(ui.seed).map(t => TYPES[t].name + ' ' + fmtDur(ui.seed[t])).join('、') + '</div>';
+  return h;
+}
+function panelPending() {
+  const p = ui.pending;
+  let h = '<div class="panelbox" style="border-color:#d9a79b"><h3>重估预览 · 状态变更</h3>';
+  h += '<p>' + esc(p.label) + '，生效日期 ' + (p.effectiveFrom ? dshort(p.effectiveFrom) : '立即') + '。</p>';
+  if (!p.affected.length) h += '<div class="okbox">没有未完成且采用系统估算的活动受影响。确认后只写入状态本身。</div>';
+  else {
+    h += '<table class="grid"><tr><th>活动</th><th>原结论</th><th>新结论</th><th>差异</th></tr>' +
+      p.affected.map(x => '<tr><td>' + TYPES[x.a.type].name + ' ' + x.a.start + '</td><td>' + esc(x.from.text) + '</td><td>' + esc(x.to.text) + '</td>' +
+        '<td>' + (x.from.kind === 'time' ? ((x.to.minutes - x.from.minutes >= 0 ? '+' : '') + (x.to.minutes - x.from.minutes) + 'm') : '规则判断') + '</td></tr>').join('') + '</table>';
+  }
+  h += '<div class="hint" style="margin-top:6px">手填时长与已完成记录不在受影响列表内，确认后也不会改变。</div>';
+  h += '<div class="row" style="margin-top:10px"><button class="primary" data-act="pendingok">确认应用</button><button data-act="pendingno">取消</button></div></div>';
+  return h;
+}
+
+/* =====================================================================================
+   7 · 变体 A · 时间轴
+   ===================================================================================== */
+function renderA() {
+  const { layout, conflicts } = layoutInfo();
+  const acts = sortedActs();
+  const H = (DAY_END - DAY_START) / STEP * (STEP * PX_PER_MIN);
+  let h = '<div id="axis" class="grow"><div id="axisInner" style="height:' + H + 'px;margin:8px 0 24px">';
+  for (let v = DAY_START; v <= DAY_END; v += 60) {
+    const top = (v - DAY_START) * PX_PER_MIN;
+    h += '<div class="hourline" style="top:' + top + 'px"></div><div class="hourlab" style="top:' + top + 'px">' + fmtT(v) + '</div>';
+  }
+  h += '<div class="hourline" style="top:0;left:62px"></div>';
+  for (const g of freeGaps()) {
+    const top = (g.s - DAY_START) * PX_PER_MIN, hh = Math.max(14, (g.e - g.s) * PX_PER_MIN);
+    if (hh < 20) continue;
+    h += '<div class="gap" style="top:' + top + 'px;height:' + hh + 'px;left:66px;right:8px">空闲 ' + fmtDur(g.e - g.s) + '</div>';
+  }
+  for (const a of acts) {
+    const r = actRange(a), li = layout[a.id] || { lane: 0, lanes: 1 };
+    const top = (r.s - DAY_START) * PX_PER_MIN, hh = Math.max(16, r.t.minutes * PX_PER_MIN);
+    const leftExpr = li.lanes > 1 ? 'calc(66px + (100% - 74px) * ' + (li.lane / li.lanes) + ')' : '66px';
+    const widthExpr = li.lanes > 1 ? 'calc((100% - 74px) * ' + (1 / li.lanes) + ' - 4px)' : 'calc(100% - 74px)';
+    h += '<div class="block' + (ui.sel === a.id ? ' sel' : '') + (li.conflict ? ' conflict' : '') + (a.done ? ' done' : '') + '" data-block="' + a.id + '" style="top:' + top + 'px;height:' + hh + 'px;left:' + leftExpr + ';width:' + widthExpr + '">' +
+      '<div class="bt">' + TYPES[a.type].icon + ' ' + esc(actTitle(a)) + (a.done ? ' ✓' : '') + '</div>' +
+      '<div class="bm">' + fmtT(r.s) + '–' + fmtT(r.e) + ' · ' + fmtDur(r.t.minutes) + ' <span class="tag ' + SOURCE_CLASS[r.t.source] + '">' + SOURCE_LABEL[r.t.source] + '</span></div>' +
+      '<div class="rs" data-resize="' + a.id + '"></div></div>';
+  }
+  h += '</div></div>';
+  const sel = getAct(ui.sel);
+  h += '<div class="col right" style="width:340px;flex:none">' + (sel ? fullEditor(sel) : '<div class="empty">点击时间轴上的活动块开始编辑；拖动块体改开始时刻，拖动底边改时长。</div>');
+  if (!acts.length) h += '<div class="empty">这一天还没有活动。用右上角「＋ 添加活动」开始。</div>';
+  if (conflicts.length) h += '<div class="badbox">冲突组 ' + conflicts.length + ' 个：' + conflicts.map(g => g.items.map(i => TYPES[i.a.type].name).join(' × ')).join('；') + '</div>';
+  h += '</div>';
+  return h;
+}
+
+/* =====================================================================================
+   8 · 变体 B · 列表 + 检查器
+   ===================================================================================== */
+function renderB() {
+  const { layout, conflicts } = layoutInfo();
+  const acts = sortedActs();
+  let h = '<div class="col left grow">';
+  h += '<div class="panelbox"><div class="cardhead"><span class="t">按开始时刻排序的任务列表</span><button data-act="quickadd">＋ 添加</button></div>' +
+    '<div class="hint">列表顺序不是独立状态：上移/下移表示修改开始时刻。</div></div>';
+  if (!acts.length) h += '<div class="empty">这一天还没有活动。点「＋ 添加」开始。</div>';
+  acts.forEach((a, i) => {
+    const r = actRange(a), li = layout[a.id] || {}, ov = directOverlaps(a.id);
+    h += '<div class="actrow' + (ui.sel === a.id ? ' sel' : '') + (a.done ? ' done' : '') + '" data-select="' + a.id + '">' +
+      '<div class="row"><span style="width:64px" class="meta">' + fmtT(r.s) + '</span>' +
+      '<span class="ttl" style="flex:1">' + TYPES[a.type].icon + ' ' + esc(actTitle(a)) + '</span>' +
+      '<span class="meta">' + fmtDur(r.t.minutes) + '</span>' +
+      '<button class="ghost" data-act="up" data-id="' + a.id + '" title="与上一项交换开始时刻"' + (i === 0 ? ' disabled' : '') + '>↑</button>' +
+      '<button class="ghost" data-act="down" data-id="' + a.id + '" title="与下一项交换开始时刻"' + (i === acts.length - 1 ? ' disabled' : '') + '>↓</button>' +
+      '<input type="checkbox" data-field="done" data-id="' + a.id + '"' + (a.done ? ' checked' : '') + '></div>' +
+      '<div class="row wrap" style="margin-top:3px">' +
+      '<span class="tag ' + SOURCE_CLASS[r.t.source] + '">' + SOURCE_LABEL[r.t.source] + '</span>' +
+      (li.conflict ? '<span class="tag conflict">冲突组 · 与 ' + ov.map(o => TYPES[o.type].name).join('、') + '</span>' : '') +
+      (r.e > DAY_END ? '<span class="tag conflict">超出游戏日 ' + fmtDur(r.e - DAY_END) + '</span>' : '') +
+      ((a.goals || []).length ? '<span class="tag goal">目标 ×' + a.goals.length + '</span>' : '') +
+      (a.repeat ? '<span class="tag">重复 ' + a.repeat + ' 天</span>' : '') +
+      (a.note ? '<span class="tag">' + esc(a.note) + '</span>' : '') +
+      '</div></div>';
+  });
+  h += '<div class="panelbox" style="margin-top:10px"><div class="cardhead"><span class="t">时间轴摘要</span></div>' +
+    '<div class="row wrap">' + freeGaps().map(g => '<span class="chip mute">空闲 ' + fmtT(g.s) + '–' + fmtT(g.e) + ' · ' + fmtDur(g.e - g.s) + '</span>').join('') + '</div>' +
+    (conflicts.length ? '<div class="badbox">冲突组：' + conflicts.map(g => g.items.map(i => TYPES[i.a.type].name + '（' + fmtT(i.s) + '–' + fmtT(i.e) + '）').join(' ⊕ ')).join('；') + '</div>' : '<div class="okbox">无重叠。</div>') +
+    '</div>';
+  h += '</div>';
+  const sel = getAct(ui.sel);
+  h += '<div class="col right" style="width:400px;flex:none">' + (sel ? fullEditor(sel) : '<div class="empty">从左侧列表选一个活动，参数与提醒会在这里展开。</div>') + '</div>';
+  return h;
+}
+
+/* =====================================================================================
+   9 · 变体 C · 托盘 + 时间槽
+   ===================================================================================== */
+function renderC() {
+  const SLOT = 30;
+  const acts = sortedActs();
+  const selId = ui.sel;
+  let h = '<div class="col left" style="width:250px;flex:none">';
+  h += '<div class="panelbox"><div class="cardhead"><span class="t">活动托盘</span></div><div class="hint" style="margin-bottom:6px">点击即插入到最早的可用空档。</div>';
+  for (const t of TYPE_ORDER) {
+    const p = priorityDuration(t);
+    h += '<div class="traycard" data-act="new" data-t="' + t + '"><span>' + TYPES[t].icon + ' ' + TYPES[t].name + '</span>' +
+      (ui.seed[t] != null ? '<span class="tag proto">' + fmtDur(ui.seed[t]) + '</span>' : '<span class="meta">' + fmtDur(p.minutes) + ' · ' + SOURCE_LABEL[p.source] + '</span>') + '</div>';
+  }
+  h += '</div>';
+  h += '<div class="panelbox"><div class="cardhead"><span class="t">长期目标</span><button class="ghost" data-act="panel" data-p="goals">管理</button></div>';
+  h += state.goals.length ? state.goals.map(g => '<div class="row"><span style="flex:1">' + esc(g.title) + '</span><span class="meta">' + state.activities.filter(a => (a.goals || []).includes(g.id)).length + '</span></div>').join('') : '<div class="empty">无目标</div>';
+  h += '</div></div>';
+  h += '<div class="col grow">';
+  h += '<div class="panelbox"><div class="row wrap"><span class="k meta">玩家状态（快速修改）</span>' +
+    ['wateringCan', 'communityCenter'].map(k => '<select data-state="' + k + '" data-stateval="1" data-live="1">' + STATE_DEFS[k].values.map(v => '<option value="' + v + '"' + (state.playerState[k].value === v ? ' selected' : '') + '>' + STATE_DEFS[k].label + '：' + STATE_DEFS[k].names[v] + '</option>').join('') + '</select>').join('') +
+    '<button class="ghost" data-act="panel" data-p="state">全部状态</button></div></div>';
+  h += '<div class="panelbox"><div class="cardhead"><span class="t">日程槽（每 30 分钟）</span><span class="meta">点击空槽添加 · 点击活动编辑</span></div>';
+  const layout = layoutInfo().layout;
+  for (let v = DAY_START; v < DAY_END; v += SLOT) {
+    const here = acts.filter(a => { const r = actRange(a); return r.s < v + SLOT && v < r.e; });
+    h += '<div class="slot"><span class="st">' + fmtT(v) + '</span><span class="sc">';
+    if (!here.length) h += '<button class="addslot" data-act="slotadd" data-s="' + v + '">＋</button>';
+    for (const a of here) {
+      const li = layout[a.id] || {};
+      h += '<span class="chipact' + (selId === a.id ? ' sel' : '') + (li.conflict ? ' conflict' : '') + (a.done ? ' done' : '') + '" data-select="' + a.id + '">' +
+        TYPES[a.type].icon + ' ' + esc(actTitle(a)) + ' <span class="meta">' + fmtDur(actRange(a).t.minutes) + '</span></span>';
+    }
+    h += '</span></div>';
+  }
+  h += '</div></div>';
+  return h;
+}
+
+/* =====================================================================================
+   9b · 变体 D · 融合：把时间轴与列表合为一个面
+   纵向位置 = 开始时刻，空隙 = 空闲，缩进 = 被包在另一项之内。
+   代价：时长不再由面积表达（改用卡内比例条），全天不再保证一屏。
+   ===================================================================================== */
+const GAP_MODES = {
+  compact: { px: 30,  label: '紧凑' },
+  normal:  { px: 60,  label: '标准' },
+  loose:   { px: 120, label: '茂展' },
+  real:    { px: null, label: '真实比例（不封顶）' },
+};                  // 封顶值由玩家选：用页面高度买多少形状
+const GAP_MIN_PX = 18;    // 空隙留白下限：保证“空闲 10m”这类标签读得出来
+const INDENT_PX = 20;     // 包含关系缩进
+
+// 包含关系：为每个活动找到最紧的容器（时长更短且把它整个包住的活动）
+function fusedPlan() {
+  const acts = sortedActs();
+  const parent = {};
+  for (const a of acts) {
+    const r = actRange(a);
+    let best = null, bestLen = Infinity;
+    for (const b of acts) {
+      if (b.id === a.id) continue;
+      const rb = actRange(b), blen = rb.e - rb.s;
+      if (!(rb.s <= r.s && rb.e >= r.e && blen > r.e - r.s)) continue;
+      if (blen < bestLen) { best = b; bestLen = blen; }
+    }
+    if (best) parent[a.id] = best.id;
+  }
+  const children = {};
+  for (const id in parent) (children[parent[id]] = children[parent[id]] || []).push(id);
+  // 顶层项按开始时刻排序；同一时刻先排时长更长的，容器才会先于被包含项出现
+  const top = acts.filter(a => !parent[a.id])
+    .sort((x, y) => tmin(x.start) - tmin(y.start) || actTime(y).minutes - actTime(x).minutes);
+  return { top, children, parent };
+}
+
+function containsAct(outer, inner) {
+  const ro = actRange(outer), ri = actRange(inner);
+  return ro.s <= ri.s && ro.e >= ri.e && (ro.e - ro.s) > (ri.e - ri.s);
+}
+
+// 冲突标签里用的短名：区分具体门店/作物，但不把「赶路：农场 → 镇上」这种长串塞进标签
+function shortTitle(a) {
+  if (a.type === 'shop') return SHOPS[a.shop] ? SHOPS[a.shop].name : '购物';
+  if (a.type === 'custom') return a.name || '自定义活动';
+  if (a.type === 'plant') return '种植' + (a.crop ? ' ' + a.crop : '');
+  if (a.type === 'toolGive' || a.type === 'toolTake') return TYPES[a.type].name;
+  return TYPES[a.type].name;
+}
+function fusedCard(a, depth, layout, plan) {
+  const r = actRange(a), t = r.t;
+  const ov = directOverlaps(a.id);
+  const partial = ov.some(o => !containsAct(o, a) && !containsAct(a, o));
+  const kids = plan.children[a.id] || [];
+  const myParent = plan.parent[a.id];
+  let h = '<div class="fcard' + (ui.sel === a.id ? ' sel' : '') + (a.done ? ' done' : '') + (partial ? ' spine' : '') +
+    (depth > 0 ? ' nested' : '') + '" data-select="' + a.id + '" data-drop="card" data-dropid="' + a.id + '">';
+  h += '<div class="ftitle">' + (depth > 0 ? '<span class="meta">' + fmtT(r.s) + '</span> ' : '') +
+    TYPES[a.type].icon + ' ' + esc(actTitle(a)) + ' <span class="meta">' + fmtDur(t.minutes) + '</span></div>';
+  h += '<div class="row wrap"><span class="tag ' + SOURCE_CLASS[t.source] + '">' + SOURCE_LABEL[t.source] + '</span>';
+  if (partial) h += '<span class="tag conflict">同时进行 · 与 ' + ov.map(shortTitle).join('、') + '</span>';
+  else if (kids.length) h += '<span class="tag conflict">包含 ' + kids.map(k => shortTitle(getAct(k))).join('、') + '</span>';
+  else if (myParent) h += '<span class="tag conflict">在 ' + shortTitle(getAct(myParent)) + ' 期间</span>';
+  if (r.e > DAY_END) h += '<span class="tag conflict">超出游戏日 ' + fmtDur(r.e - DAY_END) + '</span>';
+  if ((a.goals || []).length) h += '<span class="tag goal">目标 ×' + a.goals.length + '</span>';
+  if (a.repeat) h += '<span class="tag">重复 ' + a.repeat + ' 天</span>';
+  if (a.done) h += '<span class="tag ok">已完成</span>';
+  if (a.note) h += '<span class="tag">' + esc(a.note) + '</span>';
+  return h + '</div></div>';
+}
+
+function fusedRows(a, depth, layout, plan) {
+  const r = actRange(a);
+  const move = depth === 0
+    ? '<div class="fmove"><button class="ghost" data-act="up" data-id="' + a.id + '" title="与上一项交换开始时刻">↑</button>' +
+      '<button class="ghost" data-act="down" data-id="' + a.id + '" title="与下一项交换开始时刻">↓</button></div>'
+    : '';
+  // 嵌套行不再重复父行的刻度，避免相邻两行同一时刻的错觉；子项的起刻移入卡片内
+  const gutter = depth === 0 ? fmtT(r.s) : '<span title="这一项被上一项覆盖，起刻见卡片内">↳</span>';
+  let h = '<div class="frow"><span class="fgutter' + (depth > 0 ? ' cont' : '') + '">' + gutter + '</span>' +
+    '<div class="fcardwrap" style="padding-left:' + (depth * INDENT_PX) + 'px">' +
+    '<div style="position:relative">' + fusedCard(a, depth, layout, plan) + move + '</div></div></div>';
+  const kids = (plan.children[a.id] || []).map(getAct).sort((x, y) => tmin(x.start) - tmin(y.start));
+  for (const k of kids) h += fusedRows(k, depth + 1, layout, plan);
+  return h;
+}
+
+// 空隙：高度 = min(封顶, 真实分钟 × 刻度)，低于下限则抬起；数字总是准确值
+function gapRow(startMin, minutes) {
+  const raw = minutes * PX_PER_MIN;
+  const cap = GAP_MODES[state.gapMode || 'normal'].px;
+  const cut = cap == null ? Infinity : cap;
+  const px = Math.round(clamp(raw, GAP_MIN_PX, cut));
+  const adjusted = Math.round(raw) !== px;
+  return '<div class="fgap' + (adjusted ? ' adj' : '') + '" data-drop="gap" data-drops="' + startMin + '"' +
+    (adjusted ? ' title="真实时长 ' + fmtDur(minutes) + '：为节省高度未按比例显示"' : '') +
+    ' style="height:' + px + 'px"><span>空闲 ' + fmtDur(minutes) + '</span></div>';
+}
+// 部分重叠：不留白，改成“同时进行”标记
+function ovRow(minutes, a) {
+  return '<div class="fov" style="height:' + GAP_MIN_PX + 'px"><span>与上一项同时进行 · 重叠 ' + fmtDur(minutes) + '</span></div>';
+}
+
+function renderD() {
+  const { layout, conflicts } = layoutInfo();
+  const plan = fusedPlan();
+  const top = plan.top, parent = plan.parent, children = plan.children;
+  const over = overrun();
+  const mode = GAP_MODES[state.gapMode || 'normal'];
+  let h = '<div class="col grow" style="padding-right:16px">';
+  h += '<div class="panelbox"><div class="spread"><span class="t"><b>按时间定位的单列表</b></span>' +
+    '<span class="row"><span class="k meta">空隙留白</span><select data-gapmode>' +
+    Object.keys(GAP_MODES).map(k => '<option value="' + k + '"' + ((state.gapMode || 'normal') === k ? ' selected' : '') + '>' + GAP_MODES[k].label + '</option>').join('') +
+    '</select><button data-act="quickadd">＋ 添加</button></span></div>' +
+    '<div class="hint" style="margin-top:4px">纵向位置＝开始时刻 · 空隙＝空闲 · 缩进＝被包在另一项之内。<b>数字总是准确值</b>；空隙高度是否按比例，取决于上面的档位。</div>' +
+    '<div class="hint">拖动卡片到<b>空隙</b>＝移到该空闲时段的起点；拖到<b>另一张卡</b>＝与它交换开始时刻。压缩后的纵轴不做连续拖动——那会给你错误的时间直觉。</div></div>';
+  if (!top.length) h += '<div class="empty">这一天还没有活动。点「＋ 添加」开始。</div>';
+
+  let cursor = DAY_START;
+  for (const a of top) {
+    const r = actRange(a);
+    if (r.s > cursor) h += gapRow(cursor, r.s - cursor);
+    else if (r.s < cursor) h += ovRow(cursor - r.s, a);
+    h += fusedRows(a, 0, layout, plan);
+    cursor = Math.max(cursor, r.e);
+  }
+  if (cursor < DAY_END) h += gapRow(cursor, DAY_END - cursor);
+  if (conflicts.length) h += '<div class="badbox" style="margin-top:10px">冲突组 ' + conflicts.length + ' 个：' + conflicts.map(g => g.items.map(i => TYPES[i.a.type].name).join(' ⊕ ')).join('；') + '</div>';
+  if (over.length) h += '<div class="warnbox">超出游戏日：' + over.map(o => TYPES[o.a.type].name + ' ' + fmtDur(o.over)).join('、') + '（保留原安排，不截短）</div>';
+  h += '</div>';
+  const sel = getAct(ui.sel);
+  h += '<div class="col right" style="width:380px;flex:none">' + (sel ? fullEditor(sel) : '<div class="empty">点任意卡片编辑；↑↓ 与相邻项交换开始时刻。</div>') + '</div>';
+  return h;
+}
+
+/* =====================================================================================
+   9c · 变体 E · 线性轴：位置严格等于时刻、高度严格等于时长，可拖动
+   放弃的是「非均匀压缩」（空隙封顶 / 最小高度抬高）；等比缩放（刻度）不破坏线性，故保留可调。
+   ===================================================================================== */
+let pxPerMin = 0.6;                       // 等比刻度，全轴统一
+const E_ZOOMS = [0.4, 0.6, 0.8, 1.0, 1.4];
+const E_MIN_H = 14;                       // 最小可点击高度；触发时用虚线边框标注，不冒充真实时长
+const dragScale = () => (ui.variant === 'E' ? pxPerMin : PX_PER_MIN);
+
+function eNode(a, children, depth) {
+  const r = actRange(a);
+  const kids = (children[a.id] || []).map(getAct).sort((x, y) => tmin(x.start) - tmin(y.start));
+  const nodes = [];
+  let need = Math.max(E_MIN_H, r.t.minutes * pxPerMin);
+  for (const k of kids) {
+    const n = eNode(k, children, depth + 1);
+    n.rel = Math.round((actRange(k).s - r.s) * pxPerMin);   // 相对父块顶部的像素偏移，同一刻度
+    nodes.push(n);
+    need = Math.max(need, n.rel + n.h);                     // 父块至少容得下嵌套层
+  }
+  return { a, r, depth, h: Math.round(need), kids: nodes };
+}
+// 泳道只对「顶层且部分重叠」分配；包含关系改用嵌套，不参与分道
+function eLanes(top) {
+  const items = top.slice().sort((x, y) => tmin(x.start) - tmin(y.start)).map(a => ({ a, s: tmin(a.start), e: actRange(a).e }));
+  const groups = []; let cur = null;
+  for (const it of items) {
+    if (cur && it.s < cur.end) { cur.items.push(it); cur.end = Math.max(cur.end, it.e); }
+    else { cur = { items: [it], s: it.s, end: it.e }; groups.push(cur); }
+  }
+  const map = {};
+  for (const g of groups) {
+    const lanes = [];
+    for (const it of g.items) {
+      let li = lanes.findIndex(end => end <= it.s);
+      if (li < 0) { lanes.push(it.e); li = lanes.length - 1; } else lanes[li] = it.e;
+      map[it.a.id] = { lane: li, lanes: 1 };
+    }
+    for (const it of g.items) map[it.a.id].lanes = lanes.length;
+  }
+  return map;
+}
+// 内容随可用高度自适应：矮块只放得下一行，高块才展示标签
+function eContent(a, r, h, floored) {
+  const t = r.t;
+  let out = '<div class="ename">' + TYPES[a.type].icon + ' ' + esc(actTitle(a)) + '</div>';
+  if (h >= 30) out += '<div class="emeta">' + fmtT(r.s) + '–' + fmtT(r.e) + ' · ' + fmtDur(t.minutes) + '</div>';
+  if (h >= 54) {
+    let tags = '<span class="tag ' + SOURCE_CLASS[t.source] + '">' + SOURCE_LABEL[t.source] + '</span>';
+    const ov = directOverlaps(a.id);
+    if (ov.length) tags += ' <span class="tag conflict">与 ' + ov.map(o => TYPES[o.type].name).join('、') + '</span>';
+    if (r.e > DAY_END) tags += ' <span class="tag conflict">超出 ' + fmtDur(r.e - DAY_END) + '</span>';
+    if ((a.goals || []).length) tags += ' <span class="tag goal">目标 ×' + a.goals.length + '</span>';
+    if (a.done) tags += ' <span class="tag ok">已完成</span>';
+    out += '<div class="emeta">' + tags + '</div>';
+  }
+  if (floored) out += '';   // 虚线边框已在 eBlockHtml / eNestedHtml 上表达，不另加标记
+  return out;
+}
+function eNestedHtml(node) {
+  const a = node.a, r = node.r, t = r.t;
+  const floored = t.minutes * pxPerMin < E_MIN_H;
+  let h = '<div class="enest' + (ui.sel === a.id ? ' sel' : '') + (a.done ? ' done' : '') + (floored ? ' floored' : '') +
+    '" data-select="' + a.id + '" style="top:' + node.rel + 'px;left:14px;right:4px;height:' + Math.max(12, node.h - 2) + 'px">';
+  h += eContent(a, r, node.h, floored);
+  for (const k of node.kids) h += eNestedHtml(k);
+  return h + '</div>';
+}
+function eBlockHtml(node, lanes) {
+  const a = node.a, r = node.r, t = r.t, li = lanes[a.id] || { lane: 0, lanes: 1 };
+  const floored = t.minutes * pxPerMin < E_MIN_H;
+  const left = li.lanes > 1 ? 'calc(64px + (100% - 74px) * ' + (li.lane / li.lanes) + ')' : '64px';
+  const width = li.lanes > 1 ? 'calc((100% - 74px) * ' + (1 / li.lanes) + ' - 4px)' : 'calc(100% - 74px)';
+  let h = '<div class="eblock' + (ui.sel === a.id ? ' sel' : '') + (a.done ? ' done' : '') + (floored ? ' floored' : '') +
+    '" data-block="' + a.id + '" style="top:' + Math.round((r.s - DAY_START) * pxPerMin) + 'px;height:' + node.h + 'px;left:' + left + ';width:' + width + '">';
+  h += eContent(a, r, node.h, floored);
+  for (const k of node.kids) h += eNestedHtml(k);
+  return h + '<div class="ers" data-resize="' + a.id + '"></div></div>';
+}
+function eGapHtml(s, e) {
+  const px = (e - s) * pxPerMin;
+  return '<div class="egap" style="top:' + Math.round((s - DAY_START) * pxPerMin) + 'px;height:' + Math.max(1, Math.round(px)) + 'px">' +
+    (px >= 16 ? '空闲 ' + fmtDur(e - s) : '') + '</div>';
+}
+function renderE() {
+  const { top, children } = fusedPlan();
+  const lanes = eLanes(top);
+  const nodes = top.map(a => eNode(a, children, 0));
+  const over = overrun(), conflicts = layoutInfo().conflicts;
+  const maxEnd = state.activities.reduce((m, a) => Math.max(m, actRange(a).e), DAY_END);
+  const H = Math.round((maxEnd - DAY_START) * pxPerMin);
+  const dayTop = Math.round((DAY_END - DAY_START) * pxPerMin);
+  let h = '<div class="col grow" style="display:flex;flex-direction:column;overflow:hidden;padding:10px 12px 0">';
+  h += '<div class="panelbox" style="flex:none"><div class="spread"><span class="t"><b>线性轴 · 可拖动</b></span>' +
+    '<span class="row"><span class="k meta">刻度（等比缩放，不破坏线性）</span><select data-ezoom>' +
+    E_ZOOMS.map(z => '<option value="' + z + '"' + (z === pxPerMin ? ' selected' : '') + '>' + z.toFixed(1) + ' px/分</option>').join('') +
+    '</select><button data-act="quickadd">＋ 添加</button></span></div>' +
+    '<div class="hint" style="margin-top:4px">位置严格等于时刻，高度严格等于时长。拖动块体改开始时刻、拖底边改时长。全天高 ' + H + 'px：' + (H > 700 ? '需要滚动' : '一屏内') + '。</div>' +
+    '<div class="hint">虚线边框 = 该项真实时长不足最小可点击高度（' + E_MIN_H + 'px），纵向被抬起，<b>不代表真实时长</b>。把刻度调到 1.4 px/分（全天 1680px）后，任何 ' + STEP + ' 分钟活动都达 ' + E_MIN_H + 'px，全天不再有任何高度抬高。</div></div>';
+  h += '<div id="eaxis"><div id="einner" style="height:' + H + 'px">';
+  for (let v = DAY_START; v <= DAY_END; v += 60) {
+    const t2 = Math.round((v - DAY_START) * pxPerMin);
+    h += '<div class="hourline" style="top:' + t2 + 'px"></div><div class="hourlab" style="top:' + t2 + 'px">' + fmtT(v) + '</div>';
+  }
+  h += '<div class="hourline ebound" style="top:' + dayTop + 'px"><span class="lbl">游戏日结束 ' + fmtT(DAY_END) + '</span></div>';
+  let cursor = DAY_START;
+  for (const a of top) { const r = actRange(a); if (r.s > cursor) h += eGapHtml(cursor, r.s); cursor = Math.max(cursor, r.e); }
+  if (cursor < DAY_END) h += eGapHtml(cursor, DAY_END);
+  for (const n of nodes) h += eBlockHtml(n, lanes);
+  h += '</div></div>';
+  if (conflicts.length) h += '<div class="badbox">冲突组 ' + conflicts.length + ' 个：' + conflicts.map(g => g.items.map(i => TYPES[i.a.type].name).join(' ⊕ ')).join('；') + '</div>';
+  if (over.length) h += '<div class="warnbox">超出游戏日：' + over.map(o => TYPES[o.a.type].name + ' ' + fmtDur(o.over)).join('、') + '（保留原安排，不截短）</div>';
+  h += '</div>';
+  const sel = getAct(ui.sel);
+  h += '<div class="col right" style="width:380px;flex:none">' + (sel ? fullEditor(sel) : '<div class="empty">点任意块编辑；拖动块体改开始时刻，拖底边改时长。</div>') + '</div>';
+  return h;
+}
+
+/* =====================================================================================
+   10 · 渲染与事件
+   ===================================================================================== */
+function actTitle(a) {
+  if (a.type === 'custom') return a.name || '自定义活动';
+  if (a.type === 'shop') return SHOPS[a.shop] ? SHOPS[a.shop].name : TYPES[a.type].name;
+  if (a.type === 'plant') return '种植 ' + (a.crop || '');
+  if (a.type === 'harvest') return '收获' + (a.batchId ? '（批次）' : '');
+  if (a.type === 'toolGive' || a.type === 'toolTake') return TYPES[a.type].name + ' ' + TOOLS[a.tool] + '→' + LEVEL_NAMES[a.to];
+  if (a.type === 'travel') return '赶路' + (a.from || a.toPlace ? '：' + (a.from || '?') + ' → ' + (a.toPlace || '?') : '');
+  if (a.type === 'fishing' || a.type === 'mining') return TYPES[a.type].name + (a.place ? '：' + a.place : '');
+  return TYPES[a.type].name;
+}
+
+// 变体注册表：新增变体只需在这里加一行
+const VARIANTS = [
+  { k: 'A', name: '时间轴', render: renderA },
+  { k: 'B', name: '列表 + 检查器', render: renderB },
+  { k: 'C', name: '托盘 + 时间槽', render: renderC },
+  { k: 'D', name: '融合 · 按时间定位的单列表', render: renderD },
+  { k: 'E', name: '线性轴 · 可拖动（不压缩）', render: renderE },
+];
+const curVariant = () => VARIANTS.find(v => v.k === ui.variant) || VARIANTS[0];
+function cycleVariant(step) {
+  const i = ((VARIANTS.findIndex(v => v.k === ui.variant) + step) % VARIANTS.length + VARIANTS.length) % VARIANTS.length;
+  ui.variant = VARIANTS[i].k;
+}
+function render() {
+  renderTopbar(); renderSwitcher();
+  const main = $('#main');
+  const scrolls = Array.from(main.querySelectorAll('.col, #axis, #eaxis')).map(c => c.scrollTop);
+  main.innerHTML = curVariant().render();
+  Array.from(main.querySelectorAll('.col, #axis, #eaxis')).forEach((c, i) => { if (scrolls[i]) c.scrollTop = scrolls[i]; });
+  renderOverlay();
+}
+
+// 事件委托
+document.addEventListener('click', e => {
+  const sel = e.target.closest('[data-select]');
+  if (sel) { ui.sel = sel.dataset.select; ui.panel = ui.variant === 'C' ? 'edit' : ui.panel; render(); return; }
+  const el = e.target.closest('[data-act]');
+  if (!el) return;
+  const id = el.dataset.id, act = el.dataset.act;
+  if (act !== 'panel') { /* 保持面板状态 */ }
+  switch (act) {
+    case 'variant': {
+      cycleVariant(Number(el.dataset.v));
+      break;
+    }
+    case 'panel': ui.panel = el.dataset.p || null; if (!ui.panel) ui.pending = null; break;
+    case 'shiftview': state.viewingDay = addDays(state.viewingDay, Number(el.dataset.d)); save(); break;
+    case 'shiftcur': state.currentGameDay = addDays(state.currentGameDay, Number(el.dataset.d)); save(); break;
+    case 'quickadd': ui.panel = 'add'; break;
+    case 'new': {
+      const a = newActivity(el.dataset.t, ui.slotStart == null ? undefined : ui.slotStart);
+      ui.slotStart = null;
+      ui.panel = ui.variant === 'C' ? 'edit' : null;
+      break;
+    }
+    case 'slotadd': { ui.panel = 'add'; ui.slotStart = Number(el.dataset.s); break; }
+    case 'dur': { const a = getAct(id); if (a) setDuration(id, actTime(a).minutes + Number(el.dataset.d)); break; }
+    case 'restore': restoreDuration(id); break;
+    case 'savepersonal': { const a = getAct(id); if (a) { state.personalDefaults[a.type] = actTime(a).minutes; save(); } break; }
+    case 'clearpersonal': { const a = getAct(id); if (a) { delete state.personalDefaults[a.type]; save(); } break; }
+    case 'del': { state.activities = state.activities.filter(x => x.id !== id); if (ui.sel === id) ui.sel = null; save(); break; }
+    case 'dup': {
+      const a = getAct(id), c = JSON.parse(JSON.stringify(a));
+      c.id = uid(); c.done = false; delete c.doneDate; c.start = fmtT(Math.min(DAY_END - STEP, tmin(a.start) + actTime(a).minutes));
+      state.activities.push(c); ui.sel = c.id; save(); break;
+    }
+    case 'up': case 'down': {
+      const acts = sortedActs(), i = acts.findIndex(x => x.id === id), j = act === 'up' ? i - 1 : i + 1;
+      if (j < 0 || j >= acts.length) break;
+      swapStarts(acts[i].id, acts[j].id);
+      break;
+    }
+    case 'additem': { const a = getAct(id); a.items = a.items || []; a.items.push({ name: '', qty: 1 }); save(); break; }
+    case 'delitem': { const a = getAct(id); a.items.splice(Number(el.dataset.i), 1); save(); break; }
+    case 'addgoal': { const v = ($('#newGoal') || {}).value; if (v && v.trim()) { state.goals.push({ id: uid(), title: v.trim(), steps: [] }); save(); } break; }
+    case 'delgoal': state.goals = state.goals.filter(g => g.id !== id); save(); break;
+    case 'addstep': {
+      const g = state.goals.find(x => x.id === id), inp = document.querySelector('[data-stepinput="' + id + '"]');
+      if (g && inp && inp.value.trim()) { g.steps = g.steps || []; g.steps.push({ id: uid(), title: inp.value.trim(), done: false }); save(); }
+      break;
+    }
+    case 'delstep': { const g = state.goals.find(x => x.id === el.dataset.gid); if (g) g.steps = g.steps.filter(s => s.id !== el.dataset.sid); save(); break; }
+    case 'step': break; // 由 change 处理
+    case 'anchornew': {
+      const t = ($('#anchorType') || {}).value || 'harvest', m = Number(($('#anchorMult') || {}).value || 1);
+      ui.seed[t] = Math.max(STEP, snap(state.defaultTable[t] * m));
+      const a = newActivity(t, ui.slotStart);
+      ui.slotStart = null; ui.seed = Object.assign({}, ui.seed);
+      break;
+    }
+    case 'anchorclear': ui.seed = {}; break;
+    case 'exportdefaults': {
+      const txt = JSON.stringify(state.defaultTable, null, 2);
+      try { navigator.clipboard.writeText(txt); alert('已复制推荐预留默认值表：\n\n' + txt); }
+      catch (err) { alert(txt); }
+      break;
+    }
+    case 'pendingok': {
+      const p = ui.pending;
+      state.playerState[p.key] = { value: p.value, effectiveFrom: p.effectiveFrom };
+      ui.pending = null; save(); break;
+    }
+    case 'pendingno': ui.pending = null; break;
+    case 'wipe': wipe(); state = freshState(); ui.sel = null; ui.panel = null; break;
+    case 'redump': save(); break;
+    case 'seed': seedScenario(el.dataset.s); break;
+    default: break;
+  }
+  render();
+});
+
+// 下拉 / 文本 / 勾选
+document.addEventListener('change', e => {
+  const stepEl = e.target.closest('[data-act="step"]');
+  if (stepEl) {
+    const g = state.goals.find(x => x.id === stepEl.dataset.gid);
+    const s = g && (g.steps || []).find(x => x.id === stepEl.dataset.sid);
+    if (s) { s.done = stepEl.checked; save(); render(); }
+    return;
+  }
+  const st = e.target.closest('[data-state]');
+  if (st) {
+    const k = st.dataset.state;
+    if (st.dataset.stateval) {
+      // 任何状态修改都先进入重估预览，确认前不改变日程
+      const value = st.value;
+      const effEl = st.parentElement.querySelector('[data-stateeff]');
+      const eff = parseLooseDate(effEl ? effEl.value : '');
+      ui.pending = { key: k, value, effectiveFrom: eff, affected: previewStateChange(k, value, eff), label: STATE_DEFS[k].label + ' → ' + STATE_DEFS[k].names[value] };
+      save(); return render();
+    }
+    if (st.dataset.stateeff) {
+      state.playerState[k] = Object.assign({}, state.playerState[k], { effectiveFrom: parseLooseDate(st.value) });
+      save(); return render();
+    }
+  }
+  const ez = e.target.closest('[data-ezoom]');
+  if (ez) { pxPerMin = Number(ez.value) || 0.6; return render(); }
+  const gm = e.target.closest('[data-gapmode]');
+  if (gm) { state.gapMode = gm.value; save(); return render(); }
+  const df = e.target.closest('[data-default]');
+  if (df) { state.defaultTable[df.dataset.default] = Math.max(10, Number(df.value) || 10); save(); return render(); }
+  const gl = e.target.closest('[data-global]');
+  if (gl) { state[gl.dataset.global] = gl.value; save(); return render(); }
+  const f = e.target.closest('[data-field]');
+  if (f) {
+    const a = getAct(f.dataset.id); if (!a) return;
+    applyField(a, f);
+    save(); return render();
+  }
+});
+
+function applyField(a, el) {
+  const field = el.dataset.field;
+  let v = el.type === 'checkbox' ? el.checked : el.value;
+  if (el.dataset.num) v = Number(v) || 0;
+  switch (field) {
+    case 'done': completeAct(a.id, v); break;
+    case 'start': a.start = v; break;
+    case 'note': a.note = v; break;
+    case 'repeat': a.repeat = v || null; break;
+    case 'goal': {
+      a.goals = a.goals || [];
+      const gid = el.dataset.gid;
+      if (v) { if (!a.goals.includes(gid)) a.goals.push(gid); } else a.goals = a.goals.filter(x => x !== gid);
+      break;
+    }
+    case 'tiles': {
+      if (a.type === 'water') { a.workload = a.workload || {}; a.workload.tiles = v; }
+      else a.tiles = v;
+      break;
+    }
+    case 'density': a.workload = a.workload || {}; a.workload.density = v; break;
+    case 'itemName': (a.items[Number(el.dataset.i)] || {}).name = v; break;
+    case 'itemQty': (a.items[Number(el.dataset.i)] || {}).qty = v; break;
+    default: a[field] = v; break;
+  }
+}
+function updateLiveSpans() {
+  document.querySelectorAll('[data-est]').forEach(el => {
+    const a = getAct(el.dataset.est); if (!a) return;
+    if (a.type === 'shop') el.innerHTML = shopCardHtml(a.shop || 'pierre', shopStatus(a.shop || 'pierre', state.viewingDay), true);
+    else if (a.type === 'water') el.innerHTML = estimateHtml(a);
+    else if (a.type === 'toolGive') el.innerHTML = upgradeRefHtml(a);
+  });
+}
+document.addEventListener('input', e => {
+  if (e.target.closest('[data-live]') && e.target.closest('[data-field]')) updateLiveSpans();
+});
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    cycleVariant(e.key === 'ArrowRight' ? 1 : -1);
+    render();
+  }
+  if (e.key === 'Escape') { ui.panel = null; ui.pending = null; render(); }
+});
+
+// 变体 A 的拖动：块体改开始时刻、底边改时长
+let drag = null;
+document.addEventListener('pointerdown', e => {
+  const rz = e.target.closest('[data-resize]');
+  if (rz) { drag = { id: rz.dataset.resize, mode: 'resize', y: e.clientY, s: tmin(getAct(rz.dataset.resize).start), d: actTime(getAct(rz.dataset.resize)).minutes }; document.body.classList.add('dragging'); e.preventDefault(); return; }
+  const bl = e.target.closest('[data-block]');
+  if (bl) { const a = getAct(bl.dataset.block); drag = { id: a.id, mode: 'move', y: e.clientY, s: tmin(a.start), d: actTime(a).minutes }; ui.sel = a.id; document.body.classList.add('dragging'); e.preventDefault(); }
+});
+document.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dy = e.clientY - drag.y, dm = snap(dy / dragScale());
+  const a = getAct(drag.id); if (!a) { drag = null; return; }
+  if (drag.mode === 'move') moveStart(a.id, drag.s + dm);
+  else { a.manualDuration = Math.max(STEP, drag.d + dm); }
+  render();
+});
+document.addEventListener('pointerup', () => {
+  if (!drag) return;
+  if (drag.mode === 'resize') { const a = getAct(drag.id); if (a) setDuration(a.id, actTime(a).minutes); }
+  drag = null; document.body.classList.remove('dragging'); save(); render();
+});
+
+// 变体 D 的拖动：压缩轴不做连续拖动，改用「离散落点」——
+// 落到空隙 = 移到该空闲时段起点；落到另一张卡 = 与它交换开始时刻。
+let dDrag = null, dHot = null;
+function dropAt(x, y) {
+  const el = document.elementFromPoint ? document.elementFromPoint(x, y) : null;
+  if (!el || !el.closest) return null;
+  const t = el.closest('[data-drop]');
+  if (!t) return null;
+  return t.dataset.drop === 'gap'
+    ? { el: t, kind: 'gap', s: Number(t.dataset.drops) }
+    : { el: t, kind: 'card', id: t.dataset.dropid };
+}
+function clearHot() { if (dHot && dHot.classList) dHot.classList.remove('drop-on'); dHot = null; }
+document.addEventListener('pointerdown', e => {
+  if (ui.variant !== 'D') return;
+  if (e.target.closest('button') || e.target.closest('input')) return;
+  const card = e.target.closest('.fcard[data-dropid]');
+  if (!card) return;
+  dDrag = { id: card.dataset.dropid, x: e.clientX, y: e.clientY, moved: false };
+});
+document.addEventListener('pointermove', e => {
+  if (!dDrag) return;
+  if (!dDrag.moved && Math.hypot(e.clientX - dDrag.x, e.clientY - dDrag.y) > 6) {
+    dDrag.moved = true; document.body.classList.add('dragging');
+  }
+  if (!dDrag.moved) return;
+  const t = dropAt(e.clientX, e.clientY);
+  if (!t) { clearHot(); return; }
+  if (t.el !== dHot) { clearHot(); dHot = t.el; dHot.classList.add('drop-on'); }
+});
+document.addEventListener('pointerup', e => {
+  if (!dDrag) return;
+  const wasDrag = dDrag.moved, id = dDrag.id;
+  dDrag = null; document.body.classList.remove('dragging'); clearHot();
+  if (!wasDrag) return;                       // 单击交给 click 处理选中
+  const t = dropAt(e.clientX, e.clientY);
+  if (!t || t.id === id) return;
+  if (t.kind === 'gap') moveStart(id, t.s);
+  else swapStarts(id, t.id);
+  save(); render();
+});
+
+/* =====================================================================================
+   11 · 场景种子
+   ===================================================================================== */
+function seedScenario(s) {
+  if (s === 'fresh') { wipe(); state = freshState(); state.scenario = '首次使用（无保存数据）'; ui.sel = null; ui.pending = null; save(); return; }
+  if (s === 'empty') {
+    state = freshState(); state.scenario = 'empty';
+    state.playerState.wateringCan = { value: 'copper', effectiveFrom: { year: 1, season: 0, day: 1 } };
+    state.goals = [{ id: uid(), title: '攒钱买下 12 格洒水器', steps: [{ id: uid(), title: '挖 60 铜矿', done: false }, { id: uid(), title: '凑够 12,000g', done: false }] }];
+    ui.sel = null; return;
+  }
+  if (s === 'restored') { load(); state.scenario = '已保存数据'; ui.sel = null; return; }
+  if (s === 'conflict') {
+    state = freshState(); state.scenario = '冲突场景';
+    state.viewingDay = { year: 1, season: 0, day: 3 };
+    state.currentGameDay = { year: 1, season: 0, day: 3 };
+    state.playerState.wateringCan = { value: 'copper', effectiveFrom: { year: 1, season: 0, day: 1 } };
+    state.goals = [{ id: uid(), title: '春季凑齐 30 个防风草', steps: [{ id: uid(), title: '完成第一次收获', done: false }] }];
+    const g1 = state.goals[0].id;
+    const mk = (o) => { const a = Object.assign({ id: uid(), date: dkey(state.viewingDay), done: false, goals: [], note: '', manualDuration: null, seedOverride: null, repeat: null }, o); state.activities.push(a); return a; };
+    const w = mk({ type: 'water', start: '06:00', workload: { tiles: 40, density: 'normal' } });
+    const t = mk({ type: 'travel', start: '06:00', from: '农场', toPlace: '镇上' });
+    state.lastReserved.water = { minutes: 25, date: dkey(state.viewingDay) };
+    const s1 = mk({ type: 'shop', start: '09:00', shop: 'robin', items: [{ name: '木材', qty: 100 }], goals: [g1] });
+    s1.manualDuration = 90;
+    const h1 = mk({ type: 'harvest', start: '09:30', manualDuration: 45, done: true, doneDate: dkey(state.viewingDay) });
+    const pl = mk({ type: 'plant', start: '14:00', crop: 'Parsnip', env: 'open', fert: 'none', tiles: 40, goals: [g1] });
+    const c1 = mk({ type: 'custom', start: '16:30', name: '修围栏', manualDuration: 120 });
+    mk({ type: 'fishing', start: '01:30', place: '山湖', target: '钓 5 条鲈鱼' });
+    ui.sel = w.id; save(); return;
+  }
+}
+
+/* =====================================================================================
+   12 · 启动
+   ===================================================================================== */
+(function boot() {
+  const restored = load();
+  state.scenario = restored ? '已保存数据（刷新恢复）' : '首次使用（无保存数据）';
+  if (!state.activities.length && !state.goals.length && !restored) {
+    // 首次使用：只要求当前游戏日与模式，不预先索取长档案
+    state.currentGameDay = { year: 1, season: 0, day: 1 };
+    state.viewingDay = { year: 1, season: 0, day: 1 };
+  }
+  render();
+  // 调试钩子：便于在控制台核对模型，不是产品接口。
+  window.PROTOTYPE = {
+    get state() { return state; }, get ui() { return ui; }, fresh: () => { wipe(); state = freshState(); render(); },
+    model: { addDays, weekdayOf, dkey, dstr, tmin, fmtT, fmtDur, cmpDate, estimateWater, actTime, actRange, conflictGroups,
+             layoutInfo, freeGaps, overrun, shopStatus, upgradeInfo, upgradePreview, priorityDuration, parseDkey,
+             newActivity, completeAct, moveStart, setDuration, seedScenario, render, previewStateChange,
+             fusedPlan, containsAct, VARIANTS },
+  };
+})();
+</script>
+</body>
+</html>
