@@ -316,6 +316,15 @@ ok('落点不会越过游戏日末（被夹到次日 01:50）', dragSrc.start ==
 M.seedScenario('fresh');
 ok('默认空隙档位 = 真实比例', S().gapMode === 'real', S().gapMode);
 
+/* ===== 已确认的决定：系统推荐预留默认值表（改动这里等于改动决定，须显式说明） ===== */
+const EXPECT_DEFAULTS = { plant: 60, water: 60, harvest: 60, shop: 60, toolGive: 60, toolTake: 60, travel: 60, fishing: 120, mining: 120, custom: 30 };
+M.seedScenario('fresh');
+const badDefaults = Object.keys(EXPECT_DEFAULTS).filter(k => S().defaultTable[k] !== EXPECT_DEFAULTS[k]);
+ok('推荐预留默认值表 = 用户已确认的十个数字', badDefaults.length === 0, badDefaults.map(k => k + ':' + S().defaultTable[k] + ' 应为 ' + EXPECT_DEFAULTS[k]));
+ok('默认值表无多余项', Object.keys(S().defaultTable).length === Object.keys(EXPECT_DEFAULTS).length, Object.keys(S().defaultTable).length);
+ok('默认值表覆盖全部十类活动', Object.keys(EXPECT_DEFAULTS).every(k => k in S().defaultTable));
+ok('十项取值都遵守 10 分钟粒度', Object.keys(S().defaultTable).every(k => S().defaultTable[k] % 10 === 0));
+
 /* ===== 往返：做一遍 → 撤一遍，状态必须逐字节回到原样（四类半截反操作的回归闸） ===== */
 const snapState = () => JSON.stringify(S());
 function roundTrip(label, doFn, undoFn) {

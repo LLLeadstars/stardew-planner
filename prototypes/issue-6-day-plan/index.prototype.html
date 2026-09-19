@@ -186,16 +186,26 @@ const CROPS = [
 
 // 九类内置活动 + 自定义。#3 结论：仅浇水按工作量估算，其余按时间预留。
 const TYPES = {
-  plant:    { name: '种植',        icon: '🌱', timeInput: 'reserve',  rec: 30,  blurb: '可随活动建立计划作物批次；完成后按实际完成日期激活' },
-  water:    { name: '浇水',        icon: '💧', timeInput: 'workload', rec: 45,  blurb: '首批唯一的工作量估算活动（受限校准场景）' },
-  harvest:  { name: '收获',        icon: '🌾', timeInput: 'reserve',  rec: 60,  blurb: '按时间预留，可关联作物批次；工作量估算留作后续' },
-  shop:     { name: '购物',        icon: '🛒', timeInput: 'reserve',  rec: 60,  blurb: '首批门店：皮埃尔杂货店、木匠商店、铁匠铺' },
-  toolGive: { name: '工具升级交付', icon: '🔨', timeInput: 'reserve',  rec: 30,  blurb: '完成后工具进入「升级中」，D+2 完成' },
-  toolTake: { name: '工具取回',    icon: '📦', timeInput: 'reserve',  rec: 30,  blurb: '完成后才更新工具等级' },
-  travel:   { name: '赶路',        icon: '🚶', timeInput: 'reserve',  rec: 30,  blurb: '可选起终点，不估算路线' },
-  fishing:  { name: '钓鱼',        icon: '🎣', timeInput: 'reserve',  rec: 120, blurb: '可选地点与自由文本目标，不估算产出' },
-  mining:   { name: '采矿',        icon: '⛏️', timeInput: 'reserve',  rec: 120, blurb: '可选地点与自由文本目标，不估算产出' },
-  custom:   { name: '自定义活动',  icon: '✏️', timeInput: 'reserve',  rec: 30,  blurb: '玩家自由填写的事项' },
+  plant:    { name: '种植',        icon: '🌱', timeInput: 'reserve',  blurb: '可随活动建立计划作物批次；完成后按实际完成日期激活' },
+  water:    { name: '浇水',        icon: '💧', timeInput: 'workload', blurb: '首批唯一的工作量估算活动（受限校准场景）' },
+  harvest:  { name: '收获',        icon: '🌾', timeInput: 'reserve',  blurb: '按时间预留，可关联作物批次；工作量估算留作后续' },
+  shop:     { name: '购物',        icon: '🛒', timeInput: 'reserve',  blurb: '首批门店：皮埃尔杂货店、木匠商店、铁匠铺' },
+  toolGive: { name: '工具升级交付', icon: '🔨', timeInput: 'reserve',  blurb: '完成后工具进入「升级中」，D+2 完成' },
+  toolTake: { name: '工具取回',    icon: '📦', timeInput: 'reserve',  blurb: '完成后才更新工具等级' },
+  travel:   { name: '赶路',        icon: '🚶', timeInput: 'reserve',  blurb: '可选起终点，不估算路线' },
+  fishing:  { name: '钓鱼',        icon: '🎣', timeInput: 'reserve',  blurb: '可选地点与自由文本目标，不估算产出' },
+  mining:   { name: '采矿',        icon: '⛏️', timeInput: 'reserve',  blurb: '可选地点与自由文本目标，不估算产出' },
+  custom:   { name: '自定义活动',  icon: '✏️', timeInput: 'reserve',  blurb: '玩家自由填写的事项' },
+};
+// =====================================================================================
+// 系统推荐预留默认值表（用户已确认，2026-09-19）
+// 这是「系统推荐预留」的唯一来源，也是规格必须锁定的表。
+// 改动这张表等于改动一个已确认的决定——须显式说明理由并同步 selftest.model.js 里的断言。
+// 浇水的时间方式是「按工作量估算」，此处的 60 分只在降级为按时间预留时才被用到。
+// =====================================================================================
+const DEFAULT_RESERVE = {
+  plant: 60, water: 60, harvest: 60, shop: 60, toolGive: 60,
+  toolTake: 60, travel: 60, fishing: 120, mining: 120, custom: 30,
 };
 const TYPE_ORDER = ['plant', 'water', 'harvest', 'shop', 'toolGive', 'toolTake', 'travel', 'fishing', 'mining', 'custom'];
 
@@ -280,7 +290,7 @@ function mmssFromRange(s, e) { return fmtT(s) + '–' + fmtT(e); }
    ===================================================================================== */
 function freshState() {
   const defs = {}; for (const k in STATE_DEFS) defs[k] = { value: STATE_DEFS[k].def, effectiveFrom: null };
-  const table = {}; for (const t of TYPE_ORDER) table[t] = TYPES[t].rec;
+  const table = Object.assign({}, DEFAULT_RESERVE);   // 唯一来源
   return {
     v: 2,
     mode: 'single',
@@ -1056,7 +1066,7 @@ function panelDefaults() {
       '<td>' + (state.lastReserved[t] ? fmtDur(state.lastReserved[t].minutes) : '—') + '</td></tr>';
   }
   h += '</table><div class="row" style="margin-top:10px"><button data-act="exportdefaults">复制为 JSON</button><button data-act="panel" data-p="">完成</button></div>';
-  h += '<div class="hint" style="margin-top:6px">浇水没有推荐预留值，因为它走按工作量估算；超出校准范围时会降级到按时间预留，此时才用到上表的值。</div>';
+  h += '<div class="hint" style="margin-top:6px">浇水走按工作量估算，上表里的值只在它降级为按时间预留时才被用到（例如多人模式或超出校准范围）。</div>';
   return h;
 }
 function panelAnchor() {
