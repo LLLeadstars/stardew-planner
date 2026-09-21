@@ -101,6 +101,17 @@ describe('日程 reducer', () => {
     expect(state.activities[1]?.duration).toBe(120);
   });
 
+  it('切换完成状态只作用于目标活动并保留手动编辑标记', () => {
+    let state = withManual(createPlannerState(day, 'single'), 'a', 360, 60);
+    state = withManual(state, 'b', 600, 60);
+    state = reducePlanner(state, { kind: 'toggleActivityCompleted', key: identityKey(manualIdentity('a')), completed: true });
+    expect(state.activities[0]?.protection.completed).toBe(true);
+    expect(state.activities[1]?.protection.completed).toBe(false);
+    expect(state.activities[0]?.protection.editedByPlayer).toBe(false);
+    state = reducePlanner(state, { kind: 'toggleActivityCompleted', key: identityKey(manualIdentity('a')) });
+    expect(state.activities[0]?.protection.completed).toBe(false);
+  });
+
   it('创建新活动时按解析链取得时长：系统推荐预留', () => {
     const state = withManual(createPlannerState(day, 'single'), 'a', 360);
     expect(state.activities[0]?.duration).toBe(systemReserve('custom'));

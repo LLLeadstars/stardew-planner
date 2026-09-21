@@ -8,6 +8,7 @@ type Props = {
   onPatch: (patch: ActivityPatch) => void;
   onSaveDefault: (activityType: ActivityType, minutes: number) => void;
   onDelete: () => void;
+  onToggleCompleted?: (completed: boolean) => void;
 };
 
 function startOptions(): number[] {
@@ -18,7 +19,7 @@ function startOptions(): number[] {
 
 const START_OPTIONS = startOptions();
 
-export function Inspector({ activity, preferences, onPatch, onSaveDefault, onDelete }: Props) {
+export function Inspector({ activity, preferences, onPatch, onSaveDefault, onDelete, onToggleCompleted = () => {} }: Props) {
   if (!activity) {
     return (
       <aside className="inspector">
@@ -52,6 +53,10 @@ export function Inspector({ activity, preferences, onPatch, onSaveDefault, onDel
         </select>
       </label>
       <DurationField value={activity.duration} onCommit={(duration) => onPatch({ duration })} />
+      <label className="check-row">
+        <input type="checkbox" checked={activity.protection.completed} onChange={(event) => onToggleCompleted(event.target.checked)} />
+        已完成
+      </label>
       <p className="hint">
         时长解析：当前手填值 ＞ 个人默认
         {personal === undefined ? '（未设置）' : ` ${formatDuration(personal)}`} ＞ 最近一次预留

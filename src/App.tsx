@@ -75,6 +75,11 @@ export function App() {
     setSelectedKey(null);
   }
 
+  function handleToggleCompleted(completed: boolean) {
+    if (!selected) return;
+    dispatch({ kind: 'toggleActivityCompleted', key: identityKey(selected.identity), completed });
+  }
+
   return (
     <div className="app">
       <TopBar currentDay={state.currentDay} mode={state.mode} onAdd={() => setAddOpen(true)} />
@@ -101,6 +106,7 @@ export function App() {
           onPatch={handlePatch}
           onSaveDefault={handleSaveDefault}
           onDelete={handleDelete}
+          onToggleCompleted={handleToggleCompleted}
         />
       </div>
       {addOpen ? (

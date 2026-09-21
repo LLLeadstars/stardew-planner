@@ -37,6 +37,7 @@ export type PlannerCommand =
       duration?: number;
     }
   | { kind: 'editActivity'; key: string; patch: ActivityPatch }
+  | { kind: 'toggleActivityCompleted'; key: string; completed?: boolean }
   | { kind: 'deleteActivity'; key: string }
   | { kind: 'savePersonalReserve'; activityType: ActivityType; minutes: number };
 
@@ -94,6 +95,16 @@ export function reducePlanner(state: PlannerState, command: PlannerCommand): Pla
         activities: state.activities.filter(
           (activity) => identityKey(activity.identity) !== command.key,
         ),
+      };
+    }
+    case 'toggleActivityCompleted': {
+      return {
+        ...state,
+        activities: state.activities.map((activity) => {
+          if (identityKey(activity.identity) !== command.key) return activity;
+          const completed = command.completed ?? !activity.protection.completed;
+          return { ...activity, protection: { ...activity.protection, completed } };
+        }),
       };
     }
     case 'savePersonalReserve': {
