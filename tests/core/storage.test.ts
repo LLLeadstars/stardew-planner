@@ -16,6 +16,7 @@ function sampleState(): PlannerState {
   return reducePlanner(base, {
     kind: 'addActivity',
     identity: manualIdentity('a'),
+    activityType: 'custom',
     name: '看电视',
     start: 370,
     duration: 10,
@@ -50,7 +51,7 @@ describe('存档序列化与版本门禁', () => {
   it('拒绝字段非法的状态', () => {
     const invalid = JSON.stringify({
       version: STORAGE_VERSION,
-      state: { currentDay: day, mode: 'single', activities: [{ identity: { kind: 'manual', id: 'a' }, name: 'x', start: 361, duration: 60, protection: { editedByPlayer: false, completed: false } }] },
+      state: { currentDay: day, mode: 'single', activities: [{ identity: { kind: 'manual', id: 'a' }, activityType: 'custom', name: 'x', start: 361, duration: 60, protection: { editedByPlayer: false, completed: false } }], reserves: { personal: {}, last: {} } },
     });
     expect(deserializeState(invalid)).toEqual({ ok: false, reason: 'corrupt' });
   });
@@ -61,9 +62,54 @@ describe('存档序列化与版本门禁', () => {
       state: {
         currentDay: day,
         mode: 'single',
-        activities: [{ identity: { kind: 'manual', id: 'a' }, name: 'x', start: 360, duration: 60 }],
+        activities: [{ identity: { kind: 'manual', id: 'a' }, activityType: 'custom', name: 'x', start: 360, duration: 60 }],
+        reserves: { personal: {}, last: {} },
       },
     });
     expect(deserializeState(invalid)).toEqual({ ok: false, reason: 'corrupt' });
+  });
+
+  it('拒绝缺少预留偏好的当前版本状态', () => {
+    const invalid = JSON.stringify({
+      version: STORAGE_VERSION,
+      state: {
+        currentDay: day,
+        mode: 'single',
+        activities: [],
+      },
+    });
+    expect(deserializeState(invalid)).toEqual({ ok: false, reason: 'corrupt' });
+  });
+});
+
+const LEGACY_ACTIVITY = {
+  identity: { kind: 'manual', id: 'a' },
+  name: '看电视',
+  start: 370,
+  duration: 10,
+  protection: { editedByPlayer: false, completed: false },
+};
+
+describe('旧格式（v1）迁移', () => {
+  it('v1 存档补上活动类型与空的预留偏好', () => {
+    const legacy = JSON.stringify({
+      version: 1,
+      state: { currentDay: day, mode: 'single', activities: [LEGACY_ACTIVITY] },
+    });
+    const result = deserializeState(legacy);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.reserves).toEqual({ personal: {}, last: {} });
+    expect(result.state.activities[0]?.activityType).toBe('custom');
+    expect(result.state.activities[0]?.name).toBe('看电视');
+    expect(result.state.activities[0]?.start).toBe(370);
+  });
+
+  it('v1 里字段非法的活动会被拒绝', () => {
+    const legacy = JSON.stringify({
+      version: 1,
+      state: { currentDay: day, mode: 'single', activities: [{ ...LEGACY_ACTIVITY, start: 361 }] },
+    });
+    expect(deserializeState(legacy)).toEqual({ ok: false, reason: 'corrupt' });
   });
 });

@@ -1,6 +1,8 @@
-import type { Activity, ActivityIdentity } from './activity';
+import type { Activity, ActivityIdentity, ActivityType } from './activity';
 import { identityKey } from './activity';
 import type { GameDate } from './date';
+import type { ReservePreferences } from './reserve';
+import { emptyReservePreferences, resolveReserve, withLastReserve, withPersonalReserve } from './reserve';
 import { clampDuration, clampStart } from './time';
 import type { GameMinutes } from './time';
 
@@ -11,13 +13,11 @@ export const GAME_MODE_LABELS: Record<GameMode, string> = {
   multi: '多人',
 };
 
-/** 自定义活动的系统推荐预留。内置活动的推荐预留表在后续切片引入。 */
-export const DEFAULT_CUSTOM_DURATION = 30;
-
 export type PlannerState = {
   currentDay: GameDate;
   mode: GameMode;
   activities: Activity[];
+  reserves: ReservePreferences;
 };
 
 export type ActivityPatch = {
@@ -27,43 +27,79 @@ export type ActivityPatch = {
 };
 
 export type PlannerCommand =
-  | { kind: 'addActivity'; identity: ActivityIdentity; name: string; start: GameMinutes; duration: number }
+  | {
+      kind: 'addActivity';
+      identity: ActivityIdentity;
+      activityType: ActivityType;
+      name: string;
+      start: GameMinutes;
+      /** 当前活动手填值；省略时按解析链取得时长。 */
+      duration?: number;
+    }
   | { kind: 'editActivity'; key: string; patch: ActivityPatch }
-  | { kind: 'deleteActivity'; key: string };
+  | { kind: 'deleteActivity'; key: string }
+  | { kind: 'savePersonalReserve'; activityType: ActivityType; minutes: number };
 
 export function createPlannerState(day: GameDate, mode: GameMode): PlannerState {
-  return { currentDay: day, mode, activities: [] };
+  return { currentDay: day, mode, activities: [], reserves: emptyReservePreferences() };
 }
 
 /**
  * 纯 reducer：只根据状态与命令返回新状态。
- * 新增与删除只影响目标活动，绝不改变其它活动的开始时刻与时长。
+ * 新增、删除与改时长只影响目标活动，绝不改变其它活动的开始时刻与时长。
  */
 export function reducePlanner(state: PlannerState, command: PlannerCommand): PlannerState {
   switch (command.kind) {
     case 'addActivity': {
+      const resolved =
+        command.duration === undefined
+          ? resolveReserve({ activityType: command.activityType, preferences: state.reserves })
+          : { minutes: clampDuration(command.duration) };
       const activity: Activity = {
         identity: command.identity,
+        activityType: command.activityType,
         name: command.name,
         start: clampStart(command.start),
-        duration: clampDuration(command.duration),
+        duration: resolved.minutes,
         protection: { editedByPlayer: false, completed: false },
       };
-      return { ...state, activities: [...state.activities, activity] };
-    }
-    case 'editActivity': {
       return {
         ...state,
-        activities: state.activities.map((activity) => {
-          if (identityKey(activity.identity) !== command.key) return activity;
-          return applyPatch(activity, command.patch);
-        }),
+        activities: [...state.activities, activity],
+        reserves:
+          command.duration === undefined
+            ? state.reserves
+            : withLastReserve(state.reserves, command.activityType, resolved.minutes),
+      };
+    }
+    case 'editActivity': {
+      const target = state.activities.find(
+        (activity) => identityKey(activity.identity) === command.key,
+      );
+      if (!target) return state;
+      return {
+        ...state,
+        activities: state.activities.map((activity) =>
+          identityKey(activity.identity) === command.key ? applyPatch(activity, command.patch) : activity,
+        ),
+        reserves:
+          command.patch.duration === undefined
+            ? state.reserves
+            : withLastReserve(state.reserves, target.activityType, command.patch.duration),
       };
     }
     case 'deleteActivity': {
       return {
         ...state,
-        activities: state.activities.filter((activity) => identityKey(activity.identity) !== command.key),
+        activities: state.activities.filter(
+          (activity) => identityKey(activity.identity) !== command.key,
+        ),
+      };
+    }
+    case 'savePersonalReserve': {
+      return {
+        ...state,
+        reserves: withPersonalReserve(state.reserves, command.activityType, command.minutes),
       };
     }
   }

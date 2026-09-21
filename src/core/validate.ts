@@ -1,7 +1,8 @@
-import type { Activity, Protection } from './activity';
-import { isActivityIdentity } from './activity';
+import type { Activity, ActivityType, Protection } from './activity';
+import { isActivityIdentity, isActivityType } from './activity';
 import { isGameDate } from './date';
 import type { PlannerState } from './planner';
+import type { ReservePreferences } from './reserve';
 import { DAY_START, LAST_START, MINUTE_STEP } from './time';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -22,6 +23,7 @@ export function isActivity(value: unknown): value is Activity {
   if (!isRecord(value)) return false;
   return (
     isActivityIdentity(value.identity) &&
+    isActivityType(value.activityType) &&
     typeof value.name === 'string' &&
     isAligned(value.start) &&
     (value.start as number) >= DAY_START &&
@@ -32,12 +34,25 @@ export function isActivity(value: unknown): value is Activity {
   );
 }
 
+function isReserveMap(value: unknown): value is Partial<Record<ActivityType, number>> {
+  if (!isRecord(value)) return false;
+  return Object.entries(value).every(
+    ([activityType, minutes]) =>
+      isActivityType(activityType) && isAligned(minutes) && (minutes as number) >= MINUTE_STEP,
+  );
+}
+
+function isReservePreferences(value: unknown): value is ReservePreferences {
+  return isRecord(value) && isReserveMap(value.personal) && isReserveMap(value.last);
+}
+
 export function isPlannerState(value: unknown): value is PlannerState {
   if (!isRecord(value)) return false;
   return (
     isGameDate(value.currentDay) &&
     (value.mode === 'single' || value.mode === 'multi') &&
     Array.isArray(value.activities) &&
-    value.activities.every(isActivity)
+    value.activities.every(isActivity) &&
+    isReservePreferences(value.reserves)
   );
 }

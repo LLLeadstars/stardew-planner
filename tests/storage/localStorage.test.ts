@@ -17,6 +17,7 @@ describe('localStorage 真实往返', () => {
     const state = reducePlanner(createPlannerState({ year: 2, season: 3, day: 28 }, 'multi'), {
       kind: 'addActivity',
       identity: manualIdentity('a'),
+      activityType: 'custom',
       name: '看电视',
       start: 370,
       duration: 10,

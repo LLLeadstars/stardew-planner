@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { Activity, ActivityPatch } from '../core';
-import { DAY_START, LAST_START, MINUTE_STEP, formatDuration, formatTime } from '../core';
+import type { Activity, ActivityPatch, ActivityType, ReservePreferences } from '../core';
+import { DAY_START, LAST_START, MINUTE_STEP, formatDuration, formatTime, systemReserve } from '../core';
 
 type Props = {
   activity: Activity | null;
+  preferences: ReservePreferences;
   onPatch: (patch: ActivityPatch) => void;
+  onSaveDefault: (activityType: ActivityType, minutes: number) => void;
   onDelete: () => void;
 };
 
@@ -16,7 +18,7 @@ function startOptions(): number[] {
 
 const START_OPTIONS = startOptions();
 
-export function Inspector({ activity, onPatch, onDelete }: Props) {
+export function Inspector({ activity, preferences, onPatch, onSaveDefault, onDelete }: Props) {
   if (!activity) {
     return (
       <aside className="inspector">
@@ -24,6 +26,9 @@ export function Inspector({ activity, onPatch, onDelete }: Props) {
       </aside>
     );
   }
+
+  const personal = preferences.personal[activity.activityType];
+  const last = preferences.last[activity.activityType];
 
   return (
     <aside className="inspector">
@@ -47,7 +52,20 @@ export function Inspector({ activity, onPatch, onDelete }: Props) {
         </select>
       </label>
       <DurationField value={activity.duration} onCommit={(duration) => onPatch({ duration })} />
-      <p className="hint">当前时长 {formatDuration(activity.duration)}；所有改动即时写入本地存储。</p>
+      <p className="hint">
+        时长解析：当前手填值 ＞ 个人默认
+        {personal === undefined ? '（未设置）' : ` ${formatDuration(personal)}`} ＞ 最近一次预留
+        {last === undefined ? '（无）' : ` ${formatDuration(last)}`} ＞ 系统推荐预留{' '}
+        {formatDuration(systemReserve(activity.activityType))}
+      </p>
+      <button
+        type="button"
+        className="ghost"
+        onClick={() => onSaveDefault(activity.activityType, activity.duration)}
+      >
+        保存为个人默认
+      </button>
+      <p className="hint">单次手填不会改变个人默认；只有点击上方按钮才会。所有改动即时写入本地存储。</p>
       <button type="button" className="danger" onClick={onDelete}>
         删除活动
       </button>

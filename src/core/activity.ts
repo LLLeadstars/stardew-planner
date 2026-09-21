@@ -14,6 +14,18 @@ export type ActivityIdentity =
 
 export type CareActivityType = 'water' | 'harvest' | 'plant';
 
+/**
+ * 活动类型。V1 先只有自定义活动；内置活动类型由 #18 扩展。
+ * 该字段同时是「系统推荐预留 / 个人默认预留 / 最近一次预留」的键。
+ */
+export type ActivityType = 'custom';
+
+const ACTIVITY_TYPES: readonly ActivityType[] = ['custom'];
+
+export function isActivityType(value: unknown): value is ActivityType {
+  return typeof value === 'string' && (ACTIVITY_TYPES as readonly string[]).includes(value);
+}
+
 /** 受保护记录：玩家手动改动过，或标记完成。自动重算不得覆盖。 */
 export type Protection = {
   editedByPlayer: boolean;
@@ -22,6 +34,7 @@ export type Protection = {
 
 export type Activity = {
   identity: ActivityIdentity;
+  activityType: ActivityType;
   name: string;
   start: GameMinutes;
   duration: number;

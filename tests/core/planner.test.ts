@@ -6,15 +6,22 @@ import {
   identityKey,
   manualIdentity,
   reducePlanner,
+  systemReserve,
 } from '../../src/core';
 import type { PlannerState } from '../../src/core';
 
 const day = { year: 1, season: 0, day: 3 } as const;
 
-function withManual(state: PlannerState, id: string, start: number, duration: number): PlannerState {
+function withManual(
+  state: PlannerState,
+  id: string,
+  start: number,
+  duration?: number,
+): PlannerState {
   return reducePlanner(state, {
     kind: 'addActivity',
     identity: manualIdentity(id),
+    activityType: 'custom',
     name: `活动 ${id}`,
     start,
     duration,
@@ -24,13 +31,19 @@ function withManual(state: PlannerState, id: string, start: number, duration: nu
 describe('日程 reducer', () => {
   it('创建初始状态：当前游戏日、模式与空活动表', () => {
     const state = createPlannerState(day, 'single');
-    expect(state).toEqual({ currentDay: day, mode: 'single', activities: [] });
+    expect(state).toEqual({
+      currentDay: day,
+      mode: 'single',
+      activities: [],
+      reserves: { personal: {}, last: {} },
+    });
   });
 
-  it('新活动带身份与未受保护的初始标记', () => {
+  it('新活动带身份、活动类型与未受保护的初始标记', () => {
     const state = withManual(createPlannerState(day, 'single'), 'a', 360, 60);
     expect(state.activities).toHaveLength(1);
     expect(state.activities[0]?.identity).toEqual({ kind: 'manual', id: 'a' });
+    expect(state.activities[0]?.activityType).toBe('custom');
     expect(state.activities[0]?.protection).toEqual({ editedByPlayer: false, completed: false });
   });
 
@@ -86,6 +99,49 @@ describe('日程 reducer', () => {
     });
     expect(state.activities[0]?.duration).toBe(60);
     expect(state.activities[1]?.duration).toBe(120);
+  });
+
+  it('创建新活动时按解析链取得时长：系统推荐预留', () => {
+    const state = withManual(createPlannerState(day, 'single'), 'a', 360);
+    expect(state.activities[0]?.duration).toBe(systemReserve('custom'));
+  });
+
+  it('添加时提供手填值就采用该值，并记为最近一次预留', () => {
+    const state = withManual(createPlannerState(day, 'single'), 'a', 360, 40);
+    expect(state.activities[0]?.duration).toBe(40);
+    expect(state.reserves.last.custom).toBe(40);
+    expect(state.reserves.personal.custom).toBeUndefined();
+  });
+
+  it('编辑时长只改目标活动、更新最近一次预留，不动个人默认', () => {
+    let state = withManual(createPlannerState(day, 'single'), 'a', 360, 60);
+    state = withManual(state, 'b', 600, 60);
+    state = reducePlanner(state, {
+      kind: 'editActivity',
+      key: identityKey(manualIdentity('a')),
+      patch: { duration: 90 },
+    });
+    expect(state.activities[0]?.duration).toBe(90);
+    expect(state.activities[1]?.duration).toBe(60);
+    expect(state.activities[1]?.start).toBe(600);
+    expect(state.reserves.last.custom).toBe(90);
+    expect(state.reserves.personal.custom).toBeUndefined();
+  });
+
+  it('显式保存个人默认后，同类新活动预填该值', () => {
+    let state = withManual(createPlannerState(day, 'single'), 'a', 360, 40);
+    state = reducePlanner(state, { kind: 'savePersonalReserve', activityType: 'custom', minutes: 90 });
+    expect(state.reserves.personal.custom).toBe(90);
+    // 单次手填值 40（最近一次预留）不覆盖个人默认 90
+    state = withManual(state, 'b', 600);
+    expect(state.activities[1]?.duration).toBe(90);
+  });
+
+  it('同一开始时刻的多个活动全部保留', () => {
+    let state = withManual(createPlannerState(day, 'single'), 'a', 360, 60);
+    state = withManual(state, 'b', 360, 30);
+    expect(state.activities).toHaveLength(2);
+    expect(state.activities.map((activity) => activity.start)).toEqual([360, 360]);
   });
 
   it('身份标识区分手工活动、系列实例与照料活动', () => {

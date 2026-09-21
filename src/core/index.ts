@@ -23,21 +23,37 @@ export {
 } from './date';
 export type { Season, GameDate } from './date';
 
-export { manualIdentity, identityKey, isActivityIdentity } from './activity';
-export type { Activity, ActivityIdentity, CareActivityType, Protection } from './activity';
+export { manualIdentity, identityKey, isActivityIdentity, isActivityType } from './activity';
+export type {
+  Activity,
+  ActivityIdentity,
+  ActivityType,
+  CareActivityType,
+  Protection,
+} from './activity';
+
+export {
+  SYSTEM_RESERVES,
+  systemReserve,
+  emptyReservePreferences,
+  resolveReserve,
+  withLastReserve,
+  withPersonalReserve,
+} from './reserve';
+export type { DurationSource, ReservePreferences, ResolvedReserve } from './reserve';
 
 export { activityRange, sortedActivities, freeGaps, overruns, firstFreeStart } from './schedule';
 export type { Range, Gap, Overrun } from './schedule';
 
-export {
-  GAME_MODE_LABELS,
-  DEFAULT_CUSTOM_DURATION,
-  createPlannerState,
-  reducePlanner,
-} from './planner';
+export { resolveDropStart, swapAdjacentStarts } from './move';
+export type { DropTarget, SwapDirection, StartPatch } from './move';
+
+export { GAME_MODE_LABELS, createPlannerState, reducePlanner } from './planner';
 export type { GameMode, PlannerState, PlannerCommand, ActivityPatch } from './planner';
 
 export { isActivity, isPlannerState } from './validate';
+
+export { migrateState } from './migrate';
 
 export { STORAGE_VERSION, serializeState, deserializeState } from './storage';
 export type { StoredDocument, DeserializeResult } from './storage';

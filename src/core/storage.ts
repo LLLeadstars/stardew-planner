@@ -1,8 +1,9 @@
+import { migrateState } from './migrate';
 import type { PlannerState } from './planner';
 import { isPlannerState } from './validate';
 
 /** 当前存档格式版本。未来格式版本一律拒绝，已知旧格式在此迁移。 */
-export const STORAGE_VERSION = 1;
+export const STORAGE_VERSION = 2;
 
 export type StoredDocument = {
   version: number;
@@ -20,6 +21,7 @@ export function serializeState(state: PlannerState): string {
 
 /**
  * 解析存档：损坏 JSON、字段非法或未来版本一律拒绝，不返回半成品状态。
+ * 已知旧格式先迁移，再按当前版本校验。
  */
 export function deserializeState(raw: string): DeserializeResult {
   let parsed: unknown;
@@ -38,6 +40,11 @@ export function deserializeState(raw: string): DeserializeResult {
   }
   if ((version as number) > STORAGE_VERSION) {
     return { ok: false, reason: 'future-version' };
+  }
+  if ((version as number) < STORAGE_VERSION) {
+    const migrated = migrateState(version as number, payload.state);
+    if (!migrated) return { ok: false, reason: 'corrupt' };
+    return { ok: true, state: migrated };
   }
   if (!isPlannerState(payload.state)) {
     return { ok: false, reason: 'corrupt' };

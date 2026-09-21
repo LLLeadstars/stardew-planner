@@ -184,6 +184,60 @@ h2 {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
+  cursor: grab;
+}
+
+.card.dragging {
+  opacity: 0.45;
+}
+
+/* 拖动落点高亮：上半＝紧贴其前，下半＝紧贴其后。 */
+.card.drop-before {
+  box-shadow: inset 0 3px 0 var(--accent);
+  border-color: var(--accent);
+}
+
+.card.drop-after {
+  box-shadow: inset 0 -3px 0 var(--accent);
+  border-color: var(--accent);
+}
+
+.card-move {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+}
+
+.card-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  text-align: left;
+}
+
+.card-move button {
+  width: 22px;
+  height: 18px;
+  padding: 0;
+  line-height: 1;
+  font-size: 11px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.card-move button:hover {
+  border-color: var(--line-2);
+  background: var(--accent-bg);
 }
 
 .card:hover {
@@ -236,6 +290,12 @@ h2 {
   border-left: 2px dotted var(--line-2);
 }
 
+.gap.drop-target {
+  background: var(--accent-bg);
+  border-left-color: var(--accent);
+  border-left-style: solid;
+}
+
 .gap span {
   position: absolute;
   left: 10px;
@@ -255,6 +315,10 @@ h2 {
   border-radius: 8px;
   padding: 16px;
   text-align: center;
+}
+
+.inspector .ghost {
+  margin-bottom: 4px;
 }
 
 .inspector label,

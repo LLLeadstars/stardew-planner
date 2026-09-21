@@ -17,6 +17,7 @@ function sampleState(): PlannerState {
   return reducePlanner(createPlannerState(day, 'single'), {
     kind: 'addActivity',
     identity: manualIdentity('a'),
+    activityType: 'custom',
     name: '看电视',
     start: 370,
     duration: 10,
