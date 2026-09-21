@@ -3,6 +3,7 @@ import {
   STORAGE_VERSION,
   createPlannerState,
   deserializeState,
+  inspectBackup,
   manualIdentity,
   reducePlanner,
   serializeState,
@@ -138,6 +139,82 @@ describe('玩家状态与今天前提的存档', () => {
       ok: false,
       reason: 'corrupt',
     });
+  });
+});
+
+describe('导入预览与导出信封', () => {
+  it('解析备份后给出领域数据摘要，并保留完整状态', () => {
+    let state = createPlannerState(day, 'multi');
+    state = reducePlanner(state, {
+      kind: 'addActivity',
+      identity: manualIdentity('a'),
+      activityType: 'custom',
+      name: '甲',
+      start: 370,
+      duration: 10,
+    });
+    state = reducePlanner(state, {
+      kind: 'addActivity',
+      identity: manualIdentity('b'),
+      activityType: 'fishing',
+      name: '乙',
+      start: 400,
+    });
+    state = reducePlanner(state, { kind: 'toggleActivityCompleted', key: 'manual:a' });
+    state = reducePlanner(state, { kind: 'savePersonalReserve', activityType: 'custom', minutes: 40 });
+    state = reducePlanner(state, { kind: 'setWeather', value: 'rain' });
+
+    const result = inspectBackup(serializeState(state));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.version).toBe(STORAGE_VERSION);
+    expect(result.state).toEqual(state);
+    expect(result.preview).toEqual({
+      currentDay: day,
+      mode: 'multi',
+      activityCount: 2,
+      completedCount: 1,
+      playerStateCount: 1,
+      personalReserveCount: 1,
+      lastReserveCount: 1,
+    });
+  });
+
+  it('导出信封整体序列化状态，后续切片新增领域数据自动纳入', () => {
+    const original = sampleState();
+    const withFutureData = {
+      ...original,
+      cropBatches: [{ id: 'batch-1', crop: '防风草' }],
+    } as unknown as PlannerState;
+    const result = inspectBackup(serializeState(withFutureData));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect((result.state as unknown as { cropBatches: unknown }).cropBatches).toEqual([
+      { id: 'batch-1', crop: '防风草' },
+    ]);
+  });
+
+  it('损坏、非对象或未来版本的文件在预览阶段就被拒绝', () => {
+    expect(inspectBackup('{不是 JSON')).toEqual({ ok: false, reason: 'corrupt' });
+    expect(inspectBackup('[]')).toEqual({ ok: false, reason: 'corrupt' });
+    expect(inspectBackup(JSON.stringify({ version: STORAGE_VERSION + 1, state: sampleState() }))).toEqual({
+      ok: false,
+      reason: 'future-version',
+    });
+  });
+
+  it('旧格式先迁移再预览，并报告来源版本', () => {
+    const legacy = JSON.stringify({
+      version: 1,
+      state: { currentDay: day, mode: 'single', activities: [LEGACY_ACTIVITY] },
+    });
+    const result = inspectBackup(legacy);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.version).toBe(1);
+    expect(result.state.activities[0]?.activityType).toBe('custom');
+    expect(result.preview.activityCount).toBe(1);
+    expect(result.preview.personalReserveCount).toBe(0);
   });
 });
 

@@ -6,9 +6,10 @@ import { GAME_MODE_LABELS, SEASON_NAMES, SEASONS } from '../core';
 type Props = {
   notice?: string;
   onStart: (day: GameDate, mode: GameMode) => void;
+  onOpenStorage: () => void;
 };
 
-export function SetupScreen({ notice, onStart }: Props) {
+export function SetupScreen({ notice, onStart, onOpenStorage }: Props) {
   const [year, setYear] = useState(1);
   const [season, setSeason] = useState<Season>(0);
   const [day, setDay] = useState(1);
@@ -84,6 +85,9 @@ export function SetupScreen({ notice, onStart }: Props) {
 
         <button type="submit" className="primary">
           开始规划
+        </button>
+        <button type="button" className="ghost" data-action="open-storage" onClick={onOpenStorage}>
+          从备份导入
         </button>
       </form>
     </div>

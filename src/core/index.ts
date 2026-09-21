@@ -95,5 +95,11 @@ export { isActivity, isPlannerState } from './validate';
 
 export { migrateState } from './migrate';
 
-export { STORAGE_VERSION, serializeState, deserializeState } from './storage';
-export type { StoredDocument, DeserializeResult } from './storage';
+export { STORAGE_VERSION, serializeState, deserializeState, inspectBackup } from './storage';
+export type {
+  StoredDocument,
+  DeserializeResult,
+  BackupInspection,
+  BackupPreview,
+  BackupRejection,
+} from './storage';

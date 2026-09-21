@@ -16,15 +16,17 @@ import { ActivityTypePicker } from './ui/ActivityTypePicker';
 import { Inspector } from './ui/Inspector';
 import { LeftPanel } from './ui/LeftPanel';
 import { SetupScreen } from './ui/SetupScreen';
+import { StoragePanel } from './ui/StoragePanel';
 import { Timeline } from './ui/Timeline';
 import { TopBar } from './ui/TopBar';
 
 export function App() {
-  const { state, loadOutcome, start, dispatch } = usePlanner();
+  const { state, loadOutcome, start, dispatch, replace, clear } = usePlanner();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [addType, setAddType] = useState<ActivityType | null>(null);
+  const [storageOpen, setStorageOpen] = useState(false);
 
   const activities = state?.activities ?? [];
   const gaps = useMemo(() => freeGaps(activities), [activities]);
@@ -34,7 +36,23 @@ export function App() {
     : null;
 
   if (!state) {
-    return <SetupScreen notice={noticeFor(loadOutcome)} onStart={(day, mode) => start(day, mode)} />;
+    return (
+      <>
+        <SetupScreen
+          notice={noticeFor(loadOutcome)}
+          onStart={(day, mode) => start(day, mode)}
+          onOpenStorage={() => setStorageOpen(true)}
+        />
+        {storageOpen ? (
+          <StoragePanel
+            state={null}
+            onImport={replace}
+            onClear={clear}
+            onClose={() => setStorageOpen(false)}
+          />
+        ) : null}
+      </>
+    );
   }
 
   function closeAdd() {
@@ -94,7 +112,12 @@ export function App() {
 
   return (
     <div className="app">
-      <TopBar currentDay={state.currentDay} mode={state.mode} onAdd={() => setAddOpen(true)} />
+      <TopBar
+        currentDay={state.currentDay}
+        mode={state.mode}
+        onAdd={() => setAddOpen(true)}
+        onOpenStorage={() => setStorageOpen(true)}
+      />
       <div className="columns">
         <LeftPanel
           currentDay={state.currentDay}
@@ -134,6 +157,14 @@ export function App() {
           preferences={state.reserves}
           onCancel={closeAdd}
           onSubmit={handleAdd}
+        />
+      ) : null}
+      {storageOpen ? (
+        <StoragePanel
+          state={state}
+          onImport={replace}
+          onClear={clear}
+          onClose={() => setStorageOpen(false)}
         />
       ) : null}
     </div>

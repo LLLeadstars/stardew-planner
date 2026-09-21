@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "state": {
+    "currentDay": { "year": 1, "season": 1, "day": 12 },
+    "mode": "multi",
+    "activities": [
+      {
+        "identity": { "kind": "manual", "id": "fish" },
+        "activityType": "fishing",
+        "name": "山湖钓鱼",
+        "start": 600,
+        "duration": 120,
+        "protection": { "editedByPlayer": true, "completed": false }
+      }
+    ],
+    "reserves": { "personal": { "fishing": 150 }, "last": { "fishing": 120 } }
+  }
+}

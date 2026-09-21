@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "state": {
+    "currentDay": { "year": 1, "season": 0, "day": 3 },
+    "mode": "single",
+    "activities": [
+      {
+        "identity": { "kind": "manual", "id": "a" },
+        "name": "看电视",
+        "start": 370,
+        "duration": 10,
+        "protection": { "editedByPlayer": false, "completed": false }
+      }
+    ]
+  }
+}

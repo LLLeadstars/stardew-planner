@@ -9,6 +9,10 @@ export type PlannerController = {
   loadOutcome: LoadOutcome;
   start: (day: GameDate, mode: GameMode) => void;
   dispatch: (command: PlannerCommand) => void;
+  /** 导入备份：整体替换当前状态，随后的 effect 立即持久化。 */
+  replace: (state: PlannerState) => void;
+  /** 清空本地数据并回到首次使用流程。 */
+  clear: () => void;
 };
 
 /**
@@ -34,7 +38,16 @@ export function usePlanner(): PlannerController {
     setState((previous) => (previous ? reducePlanner(previous, command) : previous));
   }, []);
 
-  return { state, loadOutcome, start, dispatch };
+  const replace = useCallback((next: PlannerState) => {
+    setState(next);
+  }, []);
+
+  const clear = useCallback(() => {
+    port.clear();
+    setState(null);
+  }, [port]);
+
+  return { state, loadOutcome, start, dispatch, replace, clear };
 }
 
 export function newManualId(): string {

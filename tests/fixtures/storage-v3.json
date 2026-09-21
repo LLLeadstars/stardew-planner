@@ -1,0 +1,21 @@
+{
+  "version": 3,
+  "state": {
+    "currentDay": { "year": 1, "season": 2, "day": 5 },
+    "mode": "single",
+    "activities": [
+      {
+        "identity": { "kind": "manual", "id": "shop" },
+        "activityType": "shop",
+        "name": "皮埃尔杂货铺",
+        "start": 540,
+        "duration": 60,
+        "protection": { "editedByPlayer": false, "completed": false },
+        "note": "买防风草种子",
+        "checklist": ["防风草种子 ×10", "肥料 ×2"],
+        "details": { "place": "镇上" }
+      }
+    ],
+    "reserves": { "personal": { "shop": 50 }, "last": {} }
+  }
+}
