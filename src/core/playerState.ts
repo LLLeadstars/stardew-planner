@@ -1,4 +1,5 @@
 import type { Activity, ActivityType } from './activity';
+import { shopConditionKeys } from './shop';
 
 /** 天气：普通雨与绿雨分开，未填写时相关判断保持未知。 */
 export const WEATHER_OPTIONS = [
@@ -28,6 +29,13 @@ export const TOWN_KEY_OPTIONS = [
   { value: 'no', label: '未持有' },
 ] as const;
 export type TownKeyStatus = (typeof TOWN_KEY_OPTIONS)[number]['value'];
+
+/** 罗宾施工状态：施工期间木匠商店全天关闭，柜台技巧也不成立。 */
+export const ROBIN_WORKING_OPTIONS = [
+  { value: 'yes', label: '正在农场施工' },
+  { value: 'no', label: '没有施工' },
+] as const;
+export type RobinWorkingStatus = (typeof ROBIN_WORKING_OPTIONS)[number]['value'];
 
 /** 可升级工具（铁匠铺支持的链条）。 */
 export const TOOL_OPTIONS = [
@@ -60,15 +68,17 @@ export type PlayerStates = {
   specialDay?: SpecialDay;
   communityCenter?: CommunityCenterStatus;
   townKey?: TownKeyStatus;
+  robinWorking?: RobinWorkingStatus;
   toolLevels?: ToolLevels;
 };
 
 /** 会被活动依赖、需要渐进收集的玩家状态；天气与特殊日属于「今天的前提」。 */
-export type PlayerStateKey = 'communityCenter' | 'townKey' | 'toolLevels';
+export type PlayerStateKey = 'communityCenter' | 'townKey' | 'robinWorking' | 'toolLevels';
 
 export const STATE_LABELS: Record<PlayerStateKey, string> = {
   communityCenter: '社区中心状态',
   townKey: '城镇钥匙',
+  robinWorking: '罗宾施工状态',
   toolLevels: '工具等级',
 };
 
@@ -76,13 +86,13 @@ const UNKNOWN_LABEL = '未填写';
 
 /**
  * 活动类型到玩家状态的依赖注册表。
- * 左栏只显示本日活动真正依赖的状态；后续切片扩展门店与工具规则时在这里登记。
+ * 左栏只显示本日活动真正依赖的状态；购物活动再按所选门店细分。
  */
 const ACTIVITY_STATE_DEPENDENCIES: Record<ActivityType, readonly PlayerStateKey[]> = {
   plant: [],
   water: [],
   harvest: [],
-  shop: ['communityCenter', 'townKey'],
+  shop: [],
   toolGive: ['toolLevels'],
   toolTake: ['toolLevels'],
   travel: [],
@@ -93,6 +103,7 @@ const ACTIVITY_STATE_DEPENDENCIES: Record<ActivityType, readonly PlayerStateKey[
 
 /** 单个活动依赖的玩家状态。 */
 export function activityStateKeys(activity: Activity): PlayerStateKey[] {
+  if (activity.activityType === 'shop') return shopConditionKeys(activity.details?.shop);
   return [...ACTIVITY_STATE_DEPENDENCIES[activity.activityType]];
 }
 
@@ -123,6 +134,8 @@ export function stateValueLabel(key: PlayerStateKey, states: PlayerStates): stri
         : UNKNOWN_LABEL;
     case 'townKey':
       return states.townKey ? optionLabel(TOWN_KEY_OPTIONS, states.townKey) : UNKNOWN_LABEL;
+    case 'robinWorking':
+      return states.robinWorking ? optionLabel(ROBIN_WORKING_OPTIONS, states.robinWorking) : UNKNOWN_LABEL;
     case 'toolLevels': {
       const levels = states.toolLevels ?? {};
       const parts = TOOL_OPTIONS.filter((tool) => levels[tool.value] !== undefined).map(
@@ -149,6 +162,8 @@ export function describeStateImpact(
       return `影响皮埃尔杂货店周三等门店的营业判断；本日 ${count} 项活动依赖。当前：${current}。`;
     case 'townKey':
       return `影响门店进门条件，不改变服务时段；本日 ${count} 项活动依赖。当前：${current}。`;
+    case 'robinWorking':
+      return `施工期间木匠商店全天关闭；本日 ${count} 项活动依赖。当前：${current}。`;
     case 'toolLevels':
       return `影响交付与取回的目标等级、材料与费用；本日 ${count} 项活动依赖。当前：${current}。`;
   }
@@ -187,4 +202,5 @@ export type PlayerStateCommand =
   | { kind: 'setSpecialDay'; value?: SpecialDay }
   | { kind: 'setCommunityCenter'; value?: CommunityCenterStatus }
   | { kind: 'setTownKey'; value?: TownKeyStatus }
+  | { kind: 'setRobinWorking'; value?: RobinWorkingStatus }
   | { kind: 'setToolLevel'; tool: ToolKey; level?: ToolLevel };

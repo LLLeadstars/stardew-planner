@@ -66,6 +66,7 @@ describe('左栏：今天的前提', () => {
   it('展示游戏日、模式与可修改的天气/特殊日', () => {
     const { onSetState } = mount({});
     expect(container.textContent).toContain('第 1 年 春 3 日');
+    expect(container.textContent).toContain('周三');
     expect(container.textContent).toContain('单人');
     choose(select('weather'), 'rain');
     expect(onSetState).toHaveBeenCalledWith({ kind: 'setWeather', value: 'rain' });
@@ -109,6 +110,17 @@ describe('左栏：影响本日的玩家状态', () => {
     expect(toolSelect).toBeTruthy();
     choose(toolSelect, 'copper');
     expect(onSetState).toHaveBeenCalledWith({ kind: 'setToolLevel', tool: 'can', level: 'copper' });
+  });
+
+  it('木匠商店购物让罗宾施工状态出现，并可就地修改', () => {
+    const activities = [
+      makeActivity({ start: 540, duration: 60, activityType: 'shop', details: { shop: 'carpenter' } }),
+    ];
+    const { onSetState } = mount({ activities });
+    expect(container.textContent).toContain('罗宾施工状态');
+    expect(container.textContent).not.toContain('社区中心状态');
+    choose(select('robinWorking'), 'yes');
+    expect(onSetState).toHaveBeenCalledWith({ kind: 'setRobinWorking', value: 'yes' });
   });
 });
 

@@ -17,11 +17,14 @@ export {
   SEASONS,
   SEASON_NAMES,
   DAYS_PER_SEASON,
+  WEEKDAYS,
+  WEEKDAY_LABELS,
   dateKey,
   isGameDate,
   formatDate,
+  weekdayOf,
 } from './date';
-export type { Season, GameDate } from './date';
+export type { Season, GameDate, Weekday } from './date';
 
 export {
   ACTIVITY_TYPES,
@@ -41,7 +44,24 @@ export type {
   CareActivityType,
   Checklist,
   Protection,
+  ShoppingItem,
 } from './activity';
+
+export {
+  SHOP_OPTIONS,
+  isShopKey,
+  shopConditionKeys,
+  judgeShop,
+} from './shop';
+export type {
+  ShopKey,
+  Availability,
+  AvailabilityTone,
+  AvailabilityVerdict,
+  TradeTip,
+  ShopRuleDetails,
+  ShopJudgement,
+} from './shop';
 
 export {
   SYSTEM_RESERVES,
@@ -58,6 +78,7 @@ export {
   SPECIAL_DAY_OPTIONS,
   COMMUNITY_CENTER_OPTIONS,
   TOWN_KEY_OPTIONS,
+  ROBIN_WORKING_OPTIONS,
   TOOL_OPTIONS,
   TOOL_LEVEL_OPTIONS,
   STATE_LABELS,
@@ -73,6 +94,7 @@ export type {
   SpecialDay,
   CommunityCenterStatus,
   TownKeyStatus,
+  RobinWorkingStatus,
   ToolKey,
   ToolLevel,
   ToolLevels,

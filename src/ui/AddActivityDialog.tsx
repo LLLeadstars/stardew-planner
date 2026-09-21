@@ -1,7 +1,22 @@
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { MINUTE_STEP, activityTypeLabel, formatDuration, parseChecklist, resolveReserve } from '../core';
-import type { ActivityDetails, ActivityType, DurationSource, ReservePreferences } from '../core';
+import {
+  MINUTE_STEP,
+  SHOP_OPTIONS,
+  activityTypeLabel,
+  formatDuration,
+  parseChecklist,
+  resolveReserve,
+} from '../core';
+import type {
+  ActivityDetails,
+  ActivityType,
+  DurationSource,
+  ReservePreferences,
+  ShopKey,
+  ShoppingItem,
+} from '../core';
+import { ShoppingListEditor } from './ShoppingListEditor';
 
 /** 添加弹层交给应用层的当次内容；时长缺省表示让 reducer 走解析链。 */
 export type ActivityDraft = {
@@ -34,6 +49,7 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
   const label = activityTypeLabel(activityType);
   const isTravel = activityType === 'travel';
   const isSpot = activityType === 'fishing' || activityType === 'mining';
+  const isShop = activityType === 'shop';
 
   const [name, setName] = useState('');
   const [duration, setDuration] = useState(prefill.minutes);
@@ -44,6 +60,8 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
   const [to, setTo] = useState('');
   const [place, setPlace] = useState('');
   const [target, setTarget] = useState('');
+  const [shop, setShop] = useState<ShopKey | ''>('');
+  const [shoppingRows, setShoppingRows] = useState<ShoppingItem[]>([{ name: '', quantity: '' }]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -59,9 +77,22 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
   }
 
   function buildDetails(): ActivityDetails | undefined {
+    if (isShop) return buildShopDetails();
     if (isTravel) return compact({ from, to });
     if (isSpot) return compact({ place, target });
     return undefined;
+  }
+
+  /** 购物清单项只保存玩家填写的名称与数量，不校验价格、库存或购买条件。 */
+  function buildShopDetails(): ActivityDetails | undefined {
+    const details: ActivityDetails = {};
+    if (shop) details.shop = shop;
+    const shoppingList: ShoppingItem[] = shoppingRows
+      .map((row) => ({ name: row.name.trim(), quantity: row.quantity?.trim() ?? '' }))
+      .filter((row) => row.name.length > 0)
+      .map((row) => (row.quantity ? { name: row.name, quantity: row.quantity } : { name: row.name }));
+    if (shoppingList.length) details.shoppingList = shoppingList;
+    return Object.keys(details).length ? details : undefined;
   }
 
   return (
@@ -122,6 +153,27 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
           </>
         ) : null}
 
+        {isShop ? (
+          <>
+            <label>
+              门店
+              <select
+                data-field="shop"
+                value={shop}
+                onChange={(event) => setShop(event.target.value as ShopKey | '')}
+              >
+                <option value="">未选择</option>
+                {SHOP_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <ShoppingListEditor items={shoppingRows} onChange={setShoppingRows} />
+          </>
+        ) : null}
+
         {isSpot ? (
           <>
             <label>
@@ -156,16 +208,18 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
             onChange={(event) => setNote(event.target.value)}
           />
         </label>
-        <label>
-          清单（可选，每行一项）
-          <textarea
-            data-field="checklist"
-            rows={3}
-            value={checklist}
-            placeholder={'例如：防风草种子 ×10\n肥料 ×2'}
-            onChange={(event) => setChecklist(event.target.value)}
-          />
-        </label>
+        {isShop ? null : (
+          <label>
+            清单（可选，每行一项）
+            <textarea
+              data-field="checklist"
+              rows={3}
+              value={checklist}
+              placeholder={'例如：防风草种子 ×10\n肥料 ×2'}
+              onChange={(event) => setChecklist(event.target.value)}
+            />
+          </label>
+        )}
 
         <p className="hint">
           将占用 {formatDuration(duration)}，来自{touched ? SOURCE_LABELS.manual : SOURCE_LABELS[prefill.source]}

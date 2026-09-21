@@ -52,4 +52,19 @@ describe('旧格式夹具迁移', () => {
       details: { place: '镇上' },
     });
   });
+
+  it('v4 夹具保留玩家状态，只缺少后续版本引入的门店与购物清单字段', () => {
+    const result = inspectBackup(fixture('storage-v4.json'));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.version).toBe(4);
+    expect(result.state.playerStates).toEqual({
+      weather: 'sunny',
+      communityCenter: 'notRestored',
+      toolLevels: { axe: 'copper' },
+    });
+    expect(result.state.activities[0]?.details).toBeUndefined();
+    expect(result.state.activities[1]?.details).toEqual({ place: '铁匠铺' });
+    expect(result.preview.playerStateCount).toBe(3); // weather + communityCenter + axe 等级
+  });
 });

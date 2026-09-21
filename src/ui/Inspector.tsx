@@ -1,23 +1,47 @@
 import { useEffect, useState } from 'react';
-import type { Activity, ActivityDetails, ActivityPatch, ActivityType, ReservePreferences } from '../core';
+import type {
+  Activity,
+  ActivityPatch,
+  ActivityType,
+  GameDate,
+  PlayerStateCommand,
+  PlayerStateKey,
+  PlayerStates,
+  ReservePreferences,
+  ShopJudgement,
+  ShopKey,
+  ShoppingItem,
+} from '../core';
 import {
   ACTIVITY_TYPE_LABELS,
+  COMMUNITY_CENTER_OPTIONS,
   DAY_START,
   LAST_START,
   MINUTE_STEP,
+  ROBIN_WORKING_OPTIONS,
+  SHOP_OPTIONS,
+  STATE_LABELS,
+  TOWN_KEY_OPTIONS,
+  activityStateKeys,
   formatDuration,
   formatTime,
+  judgeShop,
   parseChecklist,
   systemReserve,
 } from '../core';
+import { ShopAvailabilityList } from './ShopAvailability';
+import { ShoppingListEditor } from './ShoppingListEditor';
 
 type Props = {
   activity: Activity | null;
+  currentDay: GameDate;
+  playerStates: PlayerStates;
   preferences: ReservePreferences;
   onPatch: (patch: ActivityPatch) => void;
   onSaveDefault: (activityType: ActivityType, minutes: number) => void;
   onDelete: () => void;
   onToggleCompleted?: (completed: boolean) => void;
+  onSetState: (command: PlayerStateCommand) => void;
 };
 
 function startOptions(): number[] {
@@ -28,7 +52,17 @@ function startOptions(): number[] {
 
 const START_OPTIONS = startOptions();
 
-export function Inspector({ activity, preferences, onPatch, onSaveDefault, onDelete, onToggleCompleted = () => {} }: Props) {
+export function Inspector({
+  activity,
+  currentDay,
+  playerStates,
+  preferences,
+  onPatch,
+  onSaveDefault,
+  onDelete,
+  onToggleCompleted = () => {},
+  onSetState,
+}: Props) {
   if (!activity) {
     return (
       <aside className="inspector">
@@ -42,9 +76,18 @@ export function Inspector({ activity, preferences, onPatch, onSaveDefault, onDel
   const details = activity.details ?? {};
   const isTravel = activity.activityType === 'travel';
   const isSpot = activity.activityType === 'fishing' || activity.activityType === 'mining';
+  const isShop = activity.activityType === 'shop';
+  const shoppingList = details.shoppingList ?? [];
+  const conditionKeys = isShop ? activityStateKeys(activity) : [];
+  const judgement: ShopJudgement | null =
+    isShop && details.shop ? judgeShop(details.shop, currentDay, playerStates) : null;
 
-  function patchDetails(key: keyof ActivityDetails, value: string) {
+  function patchDetails(key: 'from' | 'to' | 'place' | 'target', value: string) {
     onPatch({ details: { ...details, [key]: value } });
+  }
+
+  function patchShoppingList(next: ShoppingItem[]) {
+    onPatch({ details: { ...details, shoppingList: next } });
   }
 
   return (
@@ -71,6 +114,19 @@ export function Inspector({ activity, preferences, onPatch, onSaveDefault, onDel
         </select>
       </label>
       <DurationField value={activity.duration} onCommit={(duration) => onPatch({ duration })} />
+
+      {isShop ? (
+        <ShopInspector
+          shop={details.shop}
+          judgement={judgement}
+          playerStates={playerStates}
+          conditionKeys={conditionKeys}
+          shoppingList={shoppingList}
+          onSelectShop={(shop) => onPatch({ details: { ...details, shop } })}
+          onChangeShoppingList={patchShoppingList}
+          onSetState={onSetState}
+        />
+      ) : null}
 
       {isTravel ? (
         <>
@@ -131,15 +187,17 @@ export function Inspector({ activity, preferences, onPatch, onSaveDefault, onDel
           onChange={(event) => onPatch({ note: event.target.value })}
         />
       </label>
-      <label>
-        清单（每行一项）
-        <textarea
-          data-field="checklist"
-          rows={3}
-          value={(activity.checklist ?? []).join('\n')}
-          onChange={(event) => onPatch({ checklist: parseChecklist(event.target.value) })}
-        />
-      </label>
+      {isShop ? null : (
+        <label>
+          清单（每行一项）
+          <textarea
+            data-field="checklist"
+            rows={3}
+            value={(activity.checklist ?? []).join('\n')}
+            onChange={(event) => onPatch({ checklist: parseChecklist(event.target.value) })}
+          />
+        </label>
+      )}
 
       <label className="check-row">
         <input type="checkbox" checked={activity.protection.completed} onChange={(event) => onToggleCompleted(event.target.checked)} />
@@ -206,4 +264,174 @@ function DurationField({ value, onCommit }: { value: number; onCommit: (value: n
       />
     </label>
   );
+}
+
+/** 购物活动的检查器区块：门店、两个独立结论、就地补状态、规则详情与购物清单。 */
+function ShopInspector({
+  shop,
+  judgement,
+  playerStates,
+  conditionKeys,
+  shoppingList,
+  onSelectShop,
+  onChangeShoppingList,
+  onSetState,
+}: {
+  shop?: ShopKey;
+  judgement: ShopJudgement | null;
+  playerStates: PlayerStates;
+  conditionKeys: PlayerStateKey[];
+  shoppingList: ShoppingItem[];
+  onSelectShop: (shop: ShopKey | undefined) => void;
+  onChangeShoppingList: (next: ShoppingItem[]) => void;
+  onSetState: (command: PlayerStateCommand) => void;
+}) {
+  return (
+    <>
+      <label>
+        门店
+        <select
+          data-field="shop"
+          value={shop ?? ''}
+          onChange={(event) =>
+            onSelectShop((event.target.value || undefined) as ShopKey | undefined)
+          }
+        >
+          <option value="">未选择</option>
+          {SHOP_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {judgement ? (
+        <div className="shop-panel">
+          <ShopAvailabilityList judgement={judgement} />
+        </div>
+      ) : (
+        <p className="hint">选择门店后显示「建筑可进入」与「服务可交易」两个独立结论。</p>
+      )}
+
+      {judgement && conditionKeys.length ? (
+        <div className="shop-conditions">
+          <span className="state-name">判断条件（可就地补充后复核）</span>
+          {conditionKeys.map((key) => (
+            <ConditionSelect
+              key={key}
+              stateKey={key}
+              playerStates={playerStates}
+              onSetState={onSetState}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      {judgement ? (
+        <details className="rule-details" data-testid="shop-rule-details">
+          <summary>规则详情</summary>
+          {judgement.rules.map((rule) => (
+            <div className="rule" key={rule.ruleId}>
+              <p>
+                <strong>{rule.version}</strong> · {rule.platform}
+              </p>
+              <p>判断条件：{rule.conditions.join('、')}</p>
+              <p>来源：{rule.source}</p>
+              <p>核验日期：{rule.verifiedAt}</p>
+              <p>可信度：{rule.confidence}</p>
+              <p>待验证：{rule.pending.join('；')}</p>
+            </div>
+          ))}
+        </details>
+      ) : null}
+
+      <ShoppingListEditor items={shoppingList} onChange={onChangeShoppingList} />
+    </>
+  );
+}
+
+/** 判断条件的就地修正：只处理购物活动依赖的状态，天气与特殊日仍由左栏前提区负责。 */
+function ConditionSelect({
+  stateKey,
+  playerStates,
+  onSetState,
+}: {
+  stateKey: PlayerStateKey;
+  playerStates: PlayerStates;
+  onSetState: (command: PlayerStateCommand) => void;
+}) {
+  if (stateKey === 'communityCenter') {
+    return (
+      <label>
+        {STATE_LABELS.communityCenter}
+        <select
+          data-field="state-communityCenter"
+          value={playerStates.communityCenter ?? ''}
+          onChange={(event) =>
+            onSetState({
+              kind: 'setCommunityCenter',
+              value: (event.target.value || undefined) as PlayerStates['communityCenter'],
+            })
+          }
+        >
+          <option value="">未填写</option>
+          {COMMUNITY_CENTER_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+  if (stateKey === 'townKey') {
+    return (
+      <label>
+        {STATE_LABELS.townKey}
+        <select
+          data-field="state-townKey"
+          value={playerStates.townKey ?? ''}
+          onChange={(event) =>
+            onSetState({
+              kind: 'setTownKey',
+              value: (event.target.value || undefined) as PlayerStates['townKey'],
+            })
+          }
+        >
+          <option value="">未填写</option>
+          {TOWN_KEY_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+  if (stateKey === 'robinWorking') {
+    return (
+      <label>
+        {STATE_LABELS.robinWorking}
+        <select
+          data-field="state-robinWorking"
+          value={playerStates.robinWorking ?? ''}
+          onChange={(event) =>
+            onSetState({
+              kind: 'setRobinWorking',
+              value: (event.target.value || undefined) as PlayerStates['robinWorking'],
+            })
+          }
+        >
+          <option value="">未填写</option>
+          {ROBIN_WORKING_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+  return null;
 }

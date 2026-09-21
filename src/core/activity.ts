@@ -1,5 +1,6 @@
 import type { GameDate } from './date';
 import { dateKey, isGameDate } from './date';
+import type { ShopKey } from './shop';
 import type { GameMinutes } from './time';
 
 /**
@@ -85,9 +86,16 @@ export function parseChecklist(text: string): Checklist {
     .filter(Boolean);
 }
 
+/** 购物清单项：玩家自由填写的名称与数量，不代表系统已核验价格、库存或购买条件。 */
+export type ShoppingItem = {
+  name: string;
+  quantity?: string;
+};
+
 /**
  * 赶路与钓鱼/采矿的当次补充信息。
  * 工具只用它显示与留档：不估算路线，也不把目标当成产出承诺。
+ * 购物活动用 shop 与 shoppingList 记录门店与购物清单。
  */
 export type ActivityDetails = {
   /** 赶路起点。 */
@@ -98,6 +106,10 @@ export type ActivityDetails = {
   place?: string;
   /** 钓鱼/采矿自由文本目标，不承诺产出。 */
   target?: string;
+  /** 购物活动所选门店。 */
+  shop?: ShopKey;
+  /** 购物清单项，可自由增删。 */
+  shoppingList?: ShoppingItem[];
 };
 
 export type Activity = {

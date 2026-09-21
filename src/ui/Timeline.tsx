@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import type { DragEvent, ReactNode } from 'react';
-import type { Activity, DropTarget, PlayerStates, SwapDirection } from '../core';
+import type {
+  Activity,
+  DropTarget,
+  GameDate,
+  PlayerStates,
+  ShopJudgement,
+  SwapDirection,
+} from '../core';
 import {
   DAY_END,
   activityRange,
@@ -8,18 +15,21 @@ import {
   formatDuration,
   formatTime,
   freeGaps,
+  judgeShop,
   overlapsOf,
   conflictGroupKeys,
   identityKey,
   resolveDropStart,
   sortedActivities,
 } from '../core';
+import { ShopAvailabilityList } from './ShopAvailability';
 
 const PX_PER_MINUTE = 0.5;
 const GAP_MIN_PX = 18;
 
 type Props = {
   activities: Activity[];
+  currentDay: GameDate;
   playerStates: PlayerStates;
   selectedKey: string | null;
   onSelect: (key: string) => void;
@@ -31,7 +41,7 @@ type Props = {
  * 融合的单时间列：按开始时刻定位的活动卡片之间，用空白表达空闲并标注时长。
  * 拖动只在三个离散落点之间切换预览，落点时刻在放下时才提交，因此连续拖动不会产生中间时刻。
  */
-export function Timeline({ activities, playerStates, selectedKey, onSelect, onMove, onSwap }: Props) {
+export function Timeline({ activities, currentDay, playerStates, selectedKey, onSelect, onMove, onSwap }: Props) {
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const [compactGaps, setCompactGaps] = useState(false);
@@ -111,6 +121,11 @@ export function Timeline({ activities, playerStates, selectedKey, onSelect, onMo
         overlaps={overlapsOf(activity, activities)}
         group={groups.get(identityKey(activity.identity))}
         stateSummary={activityStateSummary(activity, playerStates)}
+        shopJudgement={
+          activity.activityType === 'shop' && activity.details?.shop
+            ? judgeShop(activity.details.shop, currentDay, playerStates)
+            : null
+        }
       />,
     );
   }
@@ -176,6 +191,7 @@ function ActivityCard({
   overlaps,
   group,
   stateSummary,
+  shopJudgement,
 }: {
   activity: Activity;
   selected: boolean;
@@ -191,6 +207,7 @@ function ActivityCard({
   overlaps: ReturnType<typeof overlapsOf>;
   group?: number;
   stateSummary: string | null;
+  shopJudgement: ShopJudgement | null;
 }) {
   const key = identityKey(activity.identity);
   const range = activityRange(activity);
@@ -245,7 +262,9 @@ function ActivityCard({
           {detailSummary(activity) ? (
             <span className="card-detail">{detailSummary(activity)}</span>
           ) : null}
-          {stateSummary ? (
+          {shopJudgement ? (
+            <ShopAvailabilityList judgement={shopJudgement} />
+          ) : stateSummary ? (
             <span className="card-state" data-testid="activity-state-summary">
               {stateSummary}
             </span>

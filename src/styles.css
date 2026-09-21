@@ -590,3 +590,85 @@ h2 {
 .backup-preview .kv {
   margin: 6px 0 8px;
 }
+
+/* 门店判定：两个独立结论用颜色表达证据强度。 */
+.shop-availability {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.verdict {
+  font-size: 11px;
+  border-radius: 6px;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  width: fit-content;
+}
+
+.verdict.ok {
+  background: #e4f0e2;
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.verdict.closed {
+  background: var(--warn-bg);
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.verdict.unknown,
+.verdict.tips {
+  background: #fdf3d8;
+  border-color: #c79a2e;
+  color: #8a6410;
+}
+
+.shop-panel {
+  margin-bottom: 8px;
+}
+
+.shop-conditions {
+  border-top: 1px dashed var(--line);
+  padding-top: 6px;
+  margin-bottom: 8px;
+}
+
+.shop-list-editor {
+  margin-bottom: 10px;
+}
+
+.shop-list-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.shop-list-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.shop-list-row input[data-field='shop-item-quantity'] {
+  flex: 0 0 72px;
+}
+
+.rule-details {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.rule-details summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.rule-details .rule p {
+  margin: 2px 0;
+  color: var(--muted);
+}

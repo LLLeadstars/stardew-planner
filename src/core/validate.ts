@@ -1,8 +1,10 @@
-import type { Activity, ActivityDetails, ActivityType, Checklist, Protection } from './activity';
+import type { Activity, ActivityDetails, ActivityType, Checklist, Protection, ShoppingItem } from './activity';
 import { isActivityIdentity, isActivityType } from './activity';
+import { isShopKey } from './shop';
 import { isGameDate } from './date';
 import {
   COMMUNITY_CENTER_OPTIONS,
+  ROBIN_WORKING_OPTIONS,
   SPECIAL_DAY_OPTIONS,
   TOOL_LEVEL_OPTIONS,
   TOOL_OPTIONS,
@@ -28,7 +30,7 @@ function isAligned(minutes: unknown): minutes is number {
   return Number.isInteger(minutes) && (minutes as number) % MINUTE_STEP === 0;
 }
 
-const DETAIL_KEYS = new Set(['from', 'to', 'place', 'target']);
+const DETAIL_STRING_KEYS = new Set(['from', 'to', 'place', 'target']);
 
 function isOptionalString(value: unknown): boolean {
   return value === undefined || typeof value === 'string';
@@ -38,11 +40,27 @@ function isChecklist(value: unknown): value is Checklist {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
+function isShoppingItem(value: unknown): value is ShoppingItem {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    value.name.length > 0 &&
+    isOptionalString(value.quantity)
+  );
+}
+
+function isShoppingList(value: unknown): value is ShoppingItem[] {
+  return Array.isArray(value) && value.every(isShoppingItem);
+}
+
 function isActivityDetails(value: unknown): value is ActivityDetails {
   if (!isRecord(value)) return false;
-  return Object.entries(value).every(
-    ([key, entry]) => DETAIL_KEYS.has(key) && typeof entry === 'string',
-  );
+  return Object.entries(value).every(([key, entry]) => {
+    if (DETAIL_STRING_KEYS.has(key)) return typeof entry === 'string';
+    if (key === 'shop') return isShopKey(entry);
+    if (key === 'shoppingList') return isShoppingList(entry);
+    return false;
+  });
 }
 
 export function isActivity(value: unknown): value is Activity {
@@ -97,6 +115,8 @@ function isPlayerStates(value: unknown): value is PlayerStates {
     (value.communityCenter === undefined ||
       isOptionValue(COMMUNITY_CENTER_OPTIONS, value.communityCenter)) &&
     (value.townKey === undefined || isOptionValue(TOWN_KEY_OPTIONS, value.townKey)) &&
+    (value.robinWorking === undefined ||
+      isOptionValue(ROBIN_WORKING_OPTIONS, value.robinWorking)) &&
     (value.toolLevels === undefined || isToolLevels(value.toolLevels))
   );
 }

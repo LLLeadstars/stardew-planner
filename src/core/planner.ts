@@ -145,6 +145,11 @@ export function reducePlanner(state: PlannerState, command: PlannerCommand): Pla
       );
     case 'setTownKey':
       return withPlayerStates(state, setStateValue(state.playerStates, 'townKey', command.value));
+    case 'setRobinWorking':
+      return withPlayerStates(
+        state,
+        setStateValue(state.playerStates, 'robinWorking', command.value),
+      );
     case 'setToolLevel': {
       const toolLevels = { ...state.playerStates.toolLevels };
       if (command.level === undefined) delete toolLevels[command.tool];

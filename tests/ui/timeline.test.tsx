@@ -3,6 +3,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { identityKey } from '../../src/core';
+import type { GameDate } from '../../src/core';
 import { Timeline } from '../../src/ui/Timeline';
 import { makeActivity } from '../helpers';
 
@@ -25,7 +26,11 @@ afterEach(() => {
   container.remove();
 });
 
-function mount(activities: ReturnType<typeof makeActivity>[], playerStates = {}) {
+function mount(
+  activities: ReturnType<typeof makeActivity>[],
+  playerStates = {},
+  currentDay: GameDate = { year: 1, season: 0, day: 3 },
+) {
   const onMove = vi.fn();
   const onSwap = vi.fn();
   const onSelect = vi.fn();
@@ -33,6 +38,7 @@ function mount(activities: ReturnType<typeof makeActivity>[], playerStates = {})
     root.render(
       <Timeline
         activities={activities}
+        currentDay={currentDay}
         playerStates={playerStates}
         selectedKey={null}
         onSelect={onSelect}
@@ -80,6 +86,7 @@ describe('活动卡片上的玩家状态摘要', () => {
       root.render(
         <Timeline
           activities={[makeActivity({ id: 'shop', start: 540, duration: 60, activityType: 'shop' })]}
+          currentDay={{ year: 1, season: 0, day: 3 }}
           playerStates={{ communityCenter: 'restored', townKey: 'no' }}
           selectedKey={null}
           onSelect={() => {}}
@@ -94,6 +101,48 @@ describe('活动卡片上的玩家状态摘要', () => {
   it('不依赖玩家状态的卡片没有摘要行', () => {
     mount([makeActivity({ id: 'a', start: 360, duration: 60, activityType: 'custom' })]);
     expect(container.querySelector('[data-testid="activity-state-summary"]')).toBeNull();
+  });
+});
+
+describe('活动卡片上的门店判定', () => {
+  it('已选门店的购物卡片把建筑可进入与服务可交易分开显示，并保留未知的黄色结论', () => {
+    mount(
+      [
+        makeActivity({
+          id: 'shop',
+          start: 540,
+          duration: 60,
+          activityType: 'shop',
+          details: { shop: 'pierre' },
+        }),
+      ],
+      {},
+    );
+    expect(container.textContent).toContain('建筑可进入：暂按不可用');
+    expect(container.textContent).toContain('服务可交易：暂按不可用');
+    expect(container.querySelector('[data-testid="activity-state-summary"]')).toBeNull();
+  });
+
+  it('普通周二木匠商店显示红色确认关闭，同时给出黄色柜台技巧', () => {
+    mount(
+      [
+        makeActivity({
+          id: 'shop',
+          start: 540,
+          duration: 60,
+          activityType: 'shop',
+          details: { shop: 'carpenter' },
+        }),
+      ],
+      { weather: 'sunny' },
+      { year: 1, season: 0, day: 2 },
+    );
+    const service = container.querySelector('[data-testid="shop-service"]');
+    expect(service?.textContent).toContain('确认关闭');
+    expect(service?.className).toContain('closed');
+    const tip = container.querySelector('[data-testid="shop-tip"]');
+    expect(tip?.textContent).toContain('9:40');
+    expect(tip?.className).toContain('tips');
   });
 });
 

@@ -11,14 +11,17 @@ import {
   DAY_END,
   DAY_START,
   GAME_MODE_LABELS,
+  ROBIN_WORKING_OPTIONS,
   SPECIAL_DAY_OPTIONS,
   TOOL_LEVEL_OPTIONS,
   TOOL_OPTIONS,
   TOWN_KEY_OPTIONS,
+  WEEKDAY_LABELS,
   WEATHER_OPTIONS,
   formatDate,
   formatTime,
   requiredStateRows,
+  weekdayOf,
 } from '../core';
 
 type Props = {
@@ -74,6 +77,8 @@ export function LeftPanel({
       <dl className="kv">
         <dt>游戏日</dt>
         <dd>{formatDate(currentDay)}</dd>
+        <dt>星期</dt>
+        <dd>{WEEKDAY_LABELS[weekdayOf(currentDay)]}</dd>
         <dt>模式</dt>
         <dd>{GAME_MODE_LABELS[mode]}</dd>
         <dt>区间</dt>
@@ -138,6 +143,14 @@ export function LeftPanel({
                 options={COMMUNITY_CENTER_OPTIONS}
                 value={playerStates.communityCenter}
                 onChange={(value) => onSetState({ kind: 'setCommunityCenter', value })}
+              />
+            ) : row.key === 'robinWorking' ? (
+              <PremiseSelect
+                name="robinWorking"
+                label={row.label}
+                options={ROBIN_WORKING_OPTIONS}
+                value={playerStates.robinWorking}
+                onChange={(value) => onSetState({ kind: 'setRobinWorking', value })}
               />
             ) : (
               <PremiseSelect

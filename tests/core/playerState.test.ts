@@ -21,6 +21,17 @@ describe('本日依赖的玩家状态', () => {
     expect(requiredStateKeys(activities)).toEqual(['communityCenter', 'townKey']);
   });
 
+  it('购物活动按所选门店依赖不同条件', () => {
+    const carpenter = [
+      makeActivity({ start: 540, duration: 60, activityType: 'shop', details: { shop: 'carpenter' } }),
+    ];
+    expect(requiredStateKeys(carpenter)).toEqual(['robinWorking']);
+    const blacksmith = [
+      makeActivity({ start: 540, duration: 60, activityType: 'shop', details: { shop: 'blacksmith' } }),
+    ];
+    expect(requiredStateKeys(blacksmith)).toEqual(['communityCenter']);
+  });
+
   it('工具交付与取回依赖工具等级，多个活动只列一次', () => {
     const activities = [
       makeActivity({ start: 540, duration: 60, activityType: 'toolGive' }),
@@ -108,5 +119,13 @@ describe('reducer：就地把玩家状态写回', () => {
     expect(state.playerStates.specialDay).toBe('festival');
     state = reducePlanner(state, { kind: 'setWeather' });
     expect(state.playerStates.weather).toBeUndefined();
+  });
+
+  it('罗宾施工状态可设置与清除', () => {
+    let state = createPlannerState(day, 'single');
+    state = reducePlanner(state, { kind: 'setRobinWorking', value: 'yes' });
+    expect(state.playerStates.robinWorking).toBe('yes');
+    state = reducePlanner(state, { kind: 'setRobinWorking' });
+    expect(state.playerStates.robinWorking).toBeUndefined();
   });
 });

@@ -133,6 +133,7 @@ export function App() {
         />
         <Timeline
           activities={activities}
+          currentDay={state.currentDay}
           playerStates={state.playerStates}
           selectedKey={selectedKey}
           onSelect={setSelectedKey}
@@ -141,11 +142,14 @@ export function App() {
         />
         <Inspector
           activity={selected}
+          currentDay={state.currentDay}
+          playerStates={state.playerStates}
           preferences={state.reserves}
           onPatch={handlePatch}
           onSaveDefault={handleSaveDefault}
           onDelete={handleDelete}
           onToggleCompleted={handleToggleCompleted}
+          onSetState={dispatch}
         />
       </div>
       {addOpen && addType === null ? (

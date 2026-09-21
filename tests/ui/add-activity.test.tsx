@@ -55,6 +55,14 @@ function setValue(element: HTMLInputElement | HTMLTextAreaElement, value: string
   });
 }
 
+function choose(element: HTMLSelectElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set;
+  act(() => {
+    setter?.call(element, value);
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
 function submit() {
   act(() => {
     container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
@@ -131,7 +139,7 @@ describe('添加内置活动：当次相关字段', () => {
 
   it('活动可携带当次相关备注与清单', () => {
     const onSubmit = vi.fn<(draft: ActivityDraft) => void>();
-    mount('shop', { personal: {}, last: {} }, onSubmit);
+    mount('harvest', { personal: {}, last: {} }, onSubmit);
     setValue(field('note'), '赶在 17:00 前');
     setValue(field('checklist'), '防风草种子 ×10\n肥料 ×2');
     submit();
@@ -145,5 +153,58 @@ describe('添加内置活动：当次相关字段', () => {
     expect(container.querySelector('[data-field="place"]')).toBeNull();
     expect(container.querySelector('[data-field="note"]')).not.toBeNull();
     expect(container.querySelector('[data-field="checklist"]')).not.toBeNull();
+  });
+});
+
+describe('添加购物活动：门店与购物清单项', () => {
+  it('可选门店，并自由填写购物清单项的名称与数量', () => {
+    const onSubmit = vi.fn<(draft: ActivityDraft) => void>();
+    mount('shop', { personal: {}, last: {} }, onSubmit);
+    choose(container.querySelector<HTMLSelectElement>('[data-field="shop"]')!, 'pierre');
+    const names = container.querySelectorAll<HTMLInputElement>('[data-field="shop-item-name"]');
+    const quantities = container.querySelectorAll<HTMLInputElement>('[data-field="shop-item-quantity"]');
+    setValue(names[0]!, '防风草种子');
+    setValue(quantities[0]!, '10');
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>('[data-action="add-shop-item"]')!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    setValue(container.querySelectorAll<HTMLInputElement>('[data-field="shop-item-name"]')[1]!, '肥料');
+    submit();
+    expect(onSubmit.mock.calls[0]![0].details).toEqual({
+      shop: 'pierre',
+      shoppingList: [
+        { name: '防风草种子', quantity: '10' },
+        { name: '肥料' },
+      ],
+    });
+  });
+
+  it('购物清单项可删除，且不保留空行', () => {
+    const onSubmit = vi.fn<(draft: ActivityDraft) => void>();
+    mount('shop', { personal: {}, last: {} }, onSubmit);
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>('[data-action="add-shop-item"]')!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    setValue(container.querySelectorAll<HTMLInputElement>('[data-field="shop-item-name"]')[1]!, '肥料');
+    act(() => {
+      container
+        .querySelector<HTMLButtonElement>('[data-action="remove-shop-item"]')!
+        .dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    submit();
+    expect(onSubmit.mock.calls[0]![0].details).toEqual({
+      shoppingList: [{ name: '肥料' }],
+    });
+  });
+
+  it('明确不校验价格、库存或购买条件，且用结构化清单代替通用文本清单', () => {
+    mount('shop');
+    expect(container.textContent).toContain('工具不校验价格、库存或购买条件');
+    expect(container.querySelector('[data-field="checklist"]')).toBeNull();
+    expect(container.querySelector('[data-field="shop"]')).not.toBeNull();
   });
 });

@@ -4,7 +4,7 @@ import type { GameMode, PlannerState } from './planner';
 import { isPlannerState } from './validate';
 
 /** 当前存档格式版本。未来格式版本一律拒绝，已知旧格式在此迁移。 */
-export const STORAGE_VERSION = 4;
+export const STORAGE_VERSION = 5;
 
 export type StoredDocument = {
   version: number;
@@ -99,8 +99,9 @@ function parseBackup(raw: string): ParsedBackup {
 }
 
 function previewState(state: PlannerState): BackupPreview {
-  const { weather, specialDay, communityCenter, townKey, toolLevels } = state.playerStates;
-  const singleValues = [weather, specialDay, communityCenter, townKey].filter(
+  const { weather, specialDay, communityCenter, townKey, robinWorking, toolLevels } =
+    state.playerStates;
+  const singleValues = [weather, specialDay, communityCenter, townKey, robinWorking].filter(
     (value) => value !== undefined,
   ).length;
   return {
