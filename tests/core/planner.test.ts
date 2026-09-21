@@ -155,6 +155,66 @@ describe('日程 reducer', () => {
     expect(state.activities.map((activity) => activity.start)).toEqual([360, 360]);
   });
 
+  it('内置活动按活动类型取得系统推荐预留，并保存备注、清单与当次信息', () => {
+    const state = reducePlanner(createPlannerState(day, 'single'), {
+      kind: 'addActivity',
+      identity: manualIdentity('t'),
+      activityType: 'travel',
+      name: '赶路：农场 → 铁匠铺',
+      start: 360,
+      note: '带 5 个铜矿',
+      checklist: ['铜矿 ×5', '铁锭 ×1'],
+      details: { from: '农场', to: '铁匠铺' },
+    });
+    const activity = state.activities[0];
+    expect(activity?.activityType).toBe('travel');
+    expect(activity?.duration).toBe(systemReserve('travel'));
+    expect(activity?.note).toBe('带 5 个铜矿');
+    expect(activity?.checklist).toEqual(['铜矿 ×5', '铁锭 ×1']);
+    expect(activity?.details).toEqual({ from: '农场', to: '铁匠铺' });
+  });
+
+  it('内置活动的手填时长短写为最近一次预留，按活动类型分别记录', () => {
+    let state = reducePlanner(createPlannerState(day, 'single'), {
+      kind: 'addActivity',
+      identity: manualIdentity('f'),
+      activityType: 'fishing',
+      name: '钓鱼',
+      start: 360,
+      duration: 90,
+    });
+    expect(state.reserves.last.fishing).toBe(90);
+    expect(state.reserves.last.travel).toBeUndefined();
+    state = reducePlanner(state, {
+      kind: 'addActivity',
+      identity: manualIdentity('m'),
+      activityType: 'mining',
+      name: '采矿',
+      start: 600,
+    });
+    expect(state.activities[1]?.duration).toBe(systemReserve('mining'));
+  });
+
+  it('编辑可更新备注、清单与当次信息，并记为受保护记录', () => {
+    let state = reducePlanner(createPlannerState(day, 'single'), {
+      kind: 'addActivity',
+      identity: manualIdentity('t'),
+      activityType: 'travel',
+      name: '赶路',
+      start: 360,
+    });
+    state = reducePlanner(state, {
+      kind: 'editActivity',
+      key: identityKey(manualIdentity('t')),
+      patch: { note: '改走山路', checklist: ['回复体力'], details: { from: '农场', to: '山上' } },
+    });
+    const activity = state.activities[0];
+    expect(activity?.note).toBe('改走山路');
+    expect(activity?.checklist).toEqual(['回复体力']);
+    expect(activity?.details).toEqual({ from: '农场', to: '山上' });
+    expect(activity?.protection.editedByPlayer).toBe(true);
+  });
+
   it('身份标识区分手工活动、系列实例与照料活动', () => {
     expect(identityKey(manualIdentity('x'))).toBe('manual:x');
     expect(identityKey({ kind: 'series', seriesId: 's1', date: day })).toBe('series:s1:1-0-3');

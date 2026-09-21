@@ -1,4 +1,4 @@
-import type { Activity, ActivityType, Protection } from './activity';
+import type { Activity, ActivityDetails, ActivityType, Checklist, Protection } from './activity';
 import { isActivityIdentity, isActivityType } from './activity';
 import { isGameDate } from './date';
 import type { PlannerState } from './planner';
@@ -19,6 +19,23 @@ function isAligned(minutes: unknown): minutes is number {
   return Number.isInteger(minutes) && (minutes as number) % MINUTE_STEP === 0;
 }
 
+const DETAIL_KEYS = new Set(['from', 'to', 'place', 'target']);
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === 'string';
+}
+
+function isChecklist(value: unknown): value is Checklist {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+}
+
+function isActivityDetails(value: unknown): value is ActivityDetails {
+  if (!isRecord(value)) return false;
+  return Object.entries(value).every(
+    ([key, entry]) => DETAIL_KEYS.has(key) && typeof entry === 'string',
+  );
+}
+
 export function isActivity(value: unknown): value is Activity {
   if (!isRecord(value)) return false;
   return (
@@ -30,7 +47,10 @@ export function isActivity(value: unknown): value is Activity {
     (value.start as number) <= LAST_START &&
     isAligned(value.duration) &&
     (value.duration as number) >= MINUTE_STEP &&
-    isProtection(value.protection)
+    isProtection(value.protection) &&
+    isOptionalString(value.note) &&
+    (value.checklist === undefined || isChecklist(value.checklist)) &&
+    (value.details === undefined || isActivityDetails(value.details))
   );
 }
 

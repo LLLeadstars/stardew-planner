@@ -9,12 +9,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * 已知旧格式的迁移入口。当前只有 v1 → v2：
- * v1 没有活动类型与预留偏好，且当时只能创建自定义活动。
+ * 已知旧格式的迁移入口。
+ * v1 没有活动类型与预留偏好，且当时只能创建自定义活动；
+ * v2 已有活动类型与预留偏好，但还没有备注、清单与当次信息。
  * 迁移后仍走一次当前版本的完整校验，避免把半成品状态放进来。
  */
 export function migrateState(version: number, state: unknown): PlannerState | null {
   if (version === 1) return migrateV1(state);
+  if (version === 2) return isPlannerState(state) ? state : null;
   return null;
 }
 

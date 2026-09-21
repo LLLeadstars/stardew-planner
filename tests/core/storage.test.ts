@@ -82,6 +82,43 @@ describe('存档序列化与版本门禁', () => {
   });
 });
 
+describe('当次信息（备注、清单、赶路/钓鱼/采矿字段）', () => {
+  it('往返后保留内置活动类型与当次信息', () => {
+    const state = reducePlanner(createPlannerState(day, 'single'), {
+      kind: 'addActivity',
+      identity: manualIdentity('t'),
+      activityType: 'travel',
+      name: '赶路',
+      start: 360,
+      note: '顺路买种子',
+      checklist: ['买防风草种子', '取回锄头'],
+      details: { from: '农场', to: '镇上' },
+    });
+    const result = deserializeState(serializeState(state));
+    expect(result).toEqual({ ok: true, state });
+  });
+
+  it('拒绝非文本清单', () => {
+    const base = serializeState(sampleState());
+    const parsed = JSON.parse(base) as { state: { activities: Record<string, unknown>[] } };
+    parsed.state.activities[0]!.checklist = [{ text: '不是字符串' }];
+    expect(deserializeState(JSON.stringify({ version: STORAGE_VERSION, state: parsed.state }))).toEqual({
+      ok: false,
+      reason: 'corrupt',
+    });
+  });
+
+  it('拒绝含有未知字段的当次信息', () => {
+    const base = serializeState(sampleState());
+    const parsed = JSON.parse(base) as { state: { activities: Record<string, unknown>[] } };
+    parsed.state.activities[0]!.details = { route: '农场 → 镇上' };
+    expect(deserializeState(JSON.stringify({ version: STORAGE_VERSION, state: parsed.state }))).toEqual({
+      ok: false,
+      reason: 'corrupt',
+    });
+  });
+});
+
 const LEGACY_ACTIVITY = {
   identity: { kind: 'manual', id: 'a' },
   name: '看电视',
@@ -109,6 +146,40 @@ describe('旧格式（v1）迁移', () => {
     const legacy = JSON.stringify({
       version: 1,
       state: { currentDay: day, mode: 'single', activities: [{ ...LEGACY_ACTIVITY, start: 361 }] },
+    });
+    expect(deserializeState(legacy)).toEqual({ ok: false, reason: 'corrupt' });
+  });
+});
+
+describe('旧格式（v2）迁移', () => {
+  it('v2 存档没有当次信息也照常读入', () => {
+    const legacy = JSON.stringify({
+      version: 2,
+      state: {
+        currentDay: day,
+        mode: 'single',
+        activities: [{ ...LEGACY_ACTIVITY, activityType: 'custom' }],
+        reserves: { personal: {}, last: {} },
+      },
+    });
+    const result = deserializeState(legacy);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.activities[0]?.activityType).toBe('custom');
+    expect(result.state.activities[0]?.note).toBeUndefined();
+    expect(result.state.activities[0]?.checklist).toBeUndefined();
+    expect(result.state.activities[0]?.details).toBeUndefined();
+  });
+
+  it('v2 里字段非法的状态会被拒绝', () => {
+    const legacy = JSON.stringify({
+      version: 2,
+      state: {
+        currentDay: day,
+        mode: 'single',
+        activities: [{ ...LEGACY_ACTIVITY, activityType: 'not-a-type' }],
+        reserves: { personal: {}, last: {} },
+      },
     });
     expect(deserializeState(legacy)).toEqual({ ok: false, reason: 'corrupt' });
   });

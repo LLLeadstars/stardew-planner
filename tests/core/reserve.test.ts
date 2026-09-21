@@ -7,6 +7,21 @@ import {
   withPersonalReserve,
 } from '../../src/core';
 
+describe('系统推荐预留表', () => {
+  it('取值与规格一致：种植/浇水/收获/购物/工具升级交付/工具取回/赶路 60 分，钓鱼/采矿 120 分，自定义 30 分', () => {
+    expect(systemReserve('plant')).toBe(60);
+    expect(systemReserve('water')).toBe(60);
+    expect(systemReserve('harvest')).toBe(60);
+    expect(systemReserve('shop')).toBe(60);
+    expect(systemReserve('toolGive')).toBe(60);
+    expect(systemReserve('toolTake')).toBe(60);
+    expect(systemReserve('travel')).toBe(60);
+    expect(systemReserve('fishing')).toBe(120);
+    expect(systemReserve('mining')).toBe(120);
+    expect(systemReserve('custom')).toBe(30);
+  });
+});
+
 describe('时长来源解析（按时间预留）', () => {
   it('没有任何偏好时落到系统推荐预留', () => {
     const preferences = emptyReservePreferences();

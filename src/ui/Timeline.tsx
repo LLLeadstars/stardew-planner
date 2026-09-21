@@ -237,6 +237,9 @@ function ActivityCard({
           </span>
           {group !== undefined && overlaps.length > 0 ? <span className="tag warn">冲突组 {group}</span> : null}
           {overlaps.map((overlap) => <span className="overlap" key={identityKey(overlap.activity.identity)}>{overlap.relation === 'contains' ? `包含：${overlap.activity.name}` : overlap.relation === 'contained-by' ? `被包含：${overlap.activity.name}` : `同时进行 · 重叠 ${formatDuration(overlap.minutes)}：${overlap.activity.name}`}</span>)}
+          {detailSummary(activity) ? (
+            <span className="card-detail">{detailSummary(activity)}</span>
+          ) : null}
         </span>
         {over > 0 ? <span className="tag warn">超出游戏日 {formatDuration(over)}</span> : null}
       </button>
@@ -260,4 +263,20 @@ function ActivityCard({
       </span>
     </div>
   );
+}
+
+/** 卡片上只展示玩家自己填的当次信息，不做任何路线或产出推算。 */
+function detailSummary(activity: Activity): string | null {
+  const details = activity.details;
+  if (!details) return null;
+  if (activity.activityType === 'travel') {
+    if (details.from && details.to) return `${details.from} → ${details.to}`;
+    if (details.from) return `起点 ${details.from}`;
+    if (details.to) return `终点 ${details.to}`;
+    return null;
+  }
+  const parts: string[] = [];
+  if (details.place) parts.push(details.place);
+  if (details.target) parts.push(`目标：${details.target}`);
+  return parts.length ? parts.join(' · ') : null;
 }

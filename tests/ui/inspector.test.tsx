@@ -3,8 +3,7 @@ import { act } from 'react';
 import type { ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ActivityType } from '../../src/core';
-import { AddActivityDialog } from '../../src/ui/AddActivityDialog';
+import type { ActivityPatch, ActivityType } from '../../src/core';
 import { Inspector } from '../../src/ui/Inspector';
 import { makeActivity } from '../helpers';
 
@@ -27,6 +26,22 @@ afterEach(() => {
 function mount(node: ReactNode) {
   act(() => {
     root.render(node);
+  });
+}
+
+function field(name: string): HTMLInputElement | HTMLTextAreaElement {
+  return container.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-field="${name}"]`)!;
+}
+
+function setValue(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  const proto =
+    element instanceof HTMLTextAreaElement
+      ? window.HTMLTextAreaElement.prototype
+      : window.HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  act(() => {
+    setter?.call(element, value);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
   });
 }
 
@@ -68,44 +83,80 @@ describe('检查器：时长来源与个人默认', () => {
   });
 });
 
-describe('添加弹层：时长预填来自解析链', () => {
-  it('未改动时长时让 reducer 走解析链', () => {
-    const onSubmit = vi.fn<(name: string, duration?: number) => void>();
+describe('检查器：当次相关字段', () => {
+  it('编辑备注与清单后交给应用层', () => {
+    const onPatch = vi.fn<(patch: ActivityPatch) => void>();
     mount(
-      <AddActivityDialog
-        activityType="custom"
-        preferences={{ personal: { custom: 90 }, last: {} }}
-        onCancel={() => {}}
-        onSubmit={onSubmit}
+      <Inspector
+        activity={makeActivity({ id: 'a', start: 360, duration: 60, note: '旧备注', checklist: ['甲'] })}
+        preferences={{ personal: {}, last: {} }}
+        onPatch={onPatch}
+        onSaveDefault={() => {}}
+        onDelete={() => {}}
       />,
     );
-    expect(container.querySelector<HTMLInputElement>('input[type="number"]')?.value).toBe('90');
-    const form = container.querySelector('form')!;
-    act(() => {
-      form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    });
-    expect(onSubmit).toHaveBeenCalledWith('自定义活动', undefined);
+    setValue(field('note'), '新备注');
+    expect(onPatch).toHaveBeenCalledWith({ note: '新备注' });
+
+    onPatch.mockClear();
+    setValue(field('checklist'), '甲\n乙\n丙');
+    expect(onPatch).toHaveBeenCalledWith({ checklist: ['甲', '乙', '丙'] });
   });
 
-  it('改动过时长时作为当前活动手填值提交', () => {
-    const onSubmit = vi.fn<(name: string, duration?: number) => void>();
+  it('赶路显示起点与终点，编辑其一保留另一个', () => {
+    const onPatch = vi.fn<(patch: ActivityPatch) => void>();
     mount(
-      <AddActivityDialog
-        activityType="custom"
-        preferences={{ personal: { custom: 90 }, last: {} }}
-        onCancel={() => {}}
-        onSubmit={onSubmit}
+      <Inspector
+        activity={makeActivity({
+          id: 'a',
+          start: 360,
+          duration: 60,
+          activityType: 'travel',
+          details: { from: '农场', to: '镇上' },
+        })}
+        preferences={{ personal: {}, last: {} }}
+        onPatch={onPatch}
+        onSaveDefault={() => {}}
+        onDelete={() => {}}
       />,
     );
-    const input = container.querySelector<HTMLInputElement>('input[type="number"]')!;
-    const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-    act(() => {
-      setValue?.call(input, '40');
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    act(() => {
-      container.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    });
-    expect(onSubmit).toHaveBeenCalledWith('自定义活动', 40);
+    setValue(field('from'), '矿区');
+    expect(onPatch).toHaveBeenCalledWith({ details: { from: '矿区', to: '镇上' } });
+  });
+
+  it('钓鱼显示地点与自由文本目标，编辑目标保留地点', () => {
+    const onPatch = vi.fn<(patch: ActivityPatch) => void>();
+    mount(
+      <Inspector
+        activity={makeActivity({
+          id: 'a',
+          start: 360,
+          duration: 120,
+          activityType: 'fishing',
+          details: { place: '山湖' },
+        })}
+        preferences={{ personal: {}, last: {} }}
+        onPatch={onPatch}
+        onSaveDefault={() => {}}
+        onDelete={() => {}}
+      />,
+    );
+    setValue(field('target'), '钓 5 条鲈鱼');
+    expect(onPatch).toHaveBeenCalledWith({ details: { place: '山湖', target: '钓 5 条鲈鱼' } });
+  });
+
+  it('非赶路/钓鱼/采矿活动不出现这些字段', () => {
+    mount(
+      <Inspector
+        activity={makeActivity({ id: 'a', start: 360, duration: 60, activityType: 'water' })}
+        preferences={{ personal: {}, last: {} }}
+        onPatch={() => {}}
+        onSaveDefault={() => {}}
+        onDelete={() => {}}
+      />,
+    );
+    expect(container.querySelector('[data-field="from"]')).toBeNull();
+    expect(container.querySelector('[data-field="place"]')).toBeNull();
+    expect(container.querySelector('[data-field="note"]')).not.toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import type { Activity, ActivityIdentity, ActivityType } from '../src/core';
+import type { Activity, ActivityDetails, ActivityIdentity, ActivityType, Checklist } from '../src/core';
 import { manualIdentity } from '../src/core';
 
 let counter = 0;
@@ -12,6 +12,9 @@ export function makeActivity(partial: {
   duration: number;
   editedByPlayer?: boolean;
   completed?: boolean;
+  note?: string;
+  checklist?: Checklist;
+  details?: ActivityDetails;
 }): Activity {
   counter += 1;
   return {
@@ -24,5 +27,8 @@ export function makeActivity(partial: {
       editedByPlayer: partial.editedByPlayer ?? false,
       completed: partial.completed ?? false,
     },
+    ...(partial.note === undefined ? {} : { note: partial.note }),
+    ...(partial.checklist === undefined ? {} : { checklist: partial.checklist }),
+    ...(partial.details === undefined ? {} : { details: partial.details }),
   };
 }

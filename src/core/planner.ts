@@ -1,4 +1,4 @@
-import type { Activity, ActivityIdentity, ActivityType } from './activity';
+import type { Activity, ActivityDetails, ActivityIdentity, ActivityType, Checklist } from './activity';
 import { identityKey } from './activity';
 import type { GameDate } from './date';
 import type { ReservePreferences } from './reserve';
@@ -24,18 +24,27 @@ export type ActivityPatch = {
   name?: string;
   start?: GameMinutes;
   duration?: number;
+  note?: string;
+  checklist?: Checklist;
+  details?: ActivityDetails;
+};
+
+export type NewActivityFields = {
+  activityType: ActivityType;
+  name: string;
+  /** 当前活动手填值；省略时按解析链取得时长。 */
+  duration?: number;
+  note?: string;
+  checklist?: Checklist;
+  details?: ActivityDetails;
 };
 
 export type PlannerCommand =
-  | {
+  | ({
       kind: 'addActivity';
       identity: ActivityIdentity;
-      activityType: ActivityType;
-      name: string;
       start: GameMinutes;
-      /** 当前活动手填值；省略时按解析链取得时长。 */
-      duration?: number;
-    }
+    } & NewActivityFields)
   | { kind: 'editActivity'; key: string; patch: ActivityPatch }
   | { kind: 'toggleActivityCompleted'; key: string; completed?: boolean }
   | { kind: 'deleteActivity'; key: string }
@@ -63,6 +72,7 @@ export function reducePlanner(state: PlannerState, command: PlannerCommand): Pla
         start: clampStart(command.start),
         duration: resolved.minutes,
         protection: { editedByPlayer: false, completed: false },
+        ...carriedFields(command),
       };
       return {
         ...state,
@@ -122,6 +132,18 @@ function applyPatch(activity: Activity, patch: ActivityPatch): Activity {
     name: patch.name ?? activity.name,
     start: patch.start !== undefined ? clampStart(patch.start) : activity.start,
     duration: patch.duration !== undefined ? clampDuration(patch.duration) : activity.duration,
+    note: patch.note ?? activity.note,
+    checklist: patch.checklist ?? activity.checklist,
+    details: patch.details ?? activity.details,
     protection: { ...activity.protection, editedByPlayer: true },
   };
+}
+
+/** 只带上玩家真的填了的当次信息，避免在存档里留下空字段。 */
+function carriedFields(fields: NewActivityFields): Pick<Activity, 'note' | 'checklist' | 'details'> {
+  const carried: Pick<Activity, 'note' | 'checklist' | 'details'> = {};
+  if (fields.note) carried.note = fields.note;
+  if (fields.checklist && fields.checklist.length) carried.checklist = fields.checklist;
+  if (fields.details && Object.keys(fields.details).length) carried.details = fields.details;
+  return carried;
 }

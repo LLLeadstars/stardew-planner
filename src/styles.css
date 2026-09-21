@@ -276,6 +276,11 @@ h2 {
   font-size: 11px;
 }
 
+.card-detail {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .tag {
   margin-left: auto;
   font-size: 12px;
@@ -339,7 +344,9 @@ h2 {
 
 .inspector input,
 .inspector select,
+.inspector textarea,
 .modal input,
+.modal textarea,
 .setup-card input,
 .setup-card select {
   font: inherit;
@@ -348,6 +355,11 @@ h2 {
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 6px 8px;
+}
+
+.inspector textarea,
+.modal textarea {
+  resize: vertical;
 }
 
 .primary {
@@ -455,4 +467,41 @@ h2 {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 8px;
+}
+
+.type-picker {
+  width: min(560px, 100%);
+}
+
+.type-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.type-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.type-option:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.type-name {
+  font-weight: 600;
+}
+
+.type-reserve {
+  font-size: 12px;
+  color: var(--accent);
 }

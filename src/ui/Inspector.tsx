@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
-import type { Activity, ActivityPatch, ActivityType, ReservePreferences } from '../core';
-import { DAY_START, LAST_START, MINUTE_STEP, formatDuration, formatTime, systemReserve } from '../core';
+import type { Activity, ActivityDetails, ActivityPatch, ActivityType, ReservePreferences } from '../core';
+import {
+  ACTIVITY_TYPE_LABELS,
+  DAY_START,
+  LAST_START,
+  MINUTE_STEP,
+  formatDuration,
+  formatTime,
+  parseChecklist,
+  systemReserve,
+} from '../core';
 
 type Props = {
   activity: Activity | null;
@@ -30,14 +39,23 @@ export function Inspector({ activity, preferences, onPatch, onSaveDefault, onDel
 
   const personal = preferences.personal[activity.activityType];
   const last = preferences.last[activity.activityType];
+  const details = activity.details ?? {};
+  const isTravel = activity.activityType === 'travel';
+  const isSpot = activity.activityType === 'fishing' || activity.activityType === 'mining';
+
+  function patchDetails(key: keyof ActivityDetails, value: string) {
+    onPatch({ details: { ...details, [key]: value } });
+  }
 
   return (
     <aside className="inspector">
       <h2>检查器</h2>
+      <p className="hint">类型：{ACTIVITY_TYPE_LABELS[activity.activityType]}</p>
       <label>
         名称
         <input
           type="text"
+          data-field="name"
           value={activity.name}
           onChange={(event) => onPatch({ name: event.target.value })}
         />
@@ -53,6 +71,76 @@ export function Inspector({ activity, preferences, onPatch, onSaveDefault, onDel
         </select>
       </label>
       <DurationField value={activity.duration} onCommit={(duration) => onPatch({ duration })} />
+
+      {isTravel ? (
+        <>
+          <label>
+            起点（可选）
+            <input
+              type="text"
+              data-field="from"
+              value={details.from ?? ''}
+              placeholder="例如：农场"
+              onChange={(event) => patchDetails('from', event.target.value)}
+            />
+          </label>
+          <label>
+            终点（可选）
+            <input
+              type="text"
+              data-field="to"
+              value={details.to ?? ''}
+              placeholder="例如：铁匠铺"
+              onChange={(event) => patchDetails('to', event.target.value)}
+            />
+          </label>
+          <p className="hint">工具不估算路线；时长由玩家填写。</p>
+        </>
+      ) : null}
+
+      {isSpot ? (
+        <>
+          <label>
+            地点（可选）
+            <input
+              type="text"
+              data-field="place"
+              value={details.place ?? ''}
+              onChange={(event) => patchDetails('place', event.target.value)}
+            />
+          </label>
+          <label>
+            目标（自由文本）
+            <input
+              type="text"
+              data-field="target"
+              value={details.target ?? ''}
+              onChange={(event) => patchDetails('target', event.target.value)}
+            />
+          </label>
+          <p className="hint">V1 不估算产出或达成目标的时间。</p>
+        </>
+      ) : null}
+
+      <label>
+        备注
+        <textarea
+          data-field="note"
+          rows={2}
+          value={activity.note ?? ''}
+          onChange={(event) => onPatch({ note: event.target.value })}
+        />
+      </label>
+      <label>
+        清单（每行一项）
+        <textarea
+          data-field="checklist"
+          rows={3}
+          value={(activity.checklist ?? []).join('\n')}
+          onChange={(event) => onPatch({ checklist: parseChecklist(event.target.value) })}
+        />
+      </label>
+
       <label className="check-row">
         <input type="checkbox" checked={activity.protection.completed} onChange={(event) => onToggleCompleted(event.target.checked)} />
         已完成
@@ -103,6 +191,7 @@ function DurationField({ value, onCommit }: { value: number; onCommit: (value: n
       预计时长
       <input
         type="number"
+        data-field="duration"
         min={MINUTE_STEP}
         step={MINUTE_STEP}
         value={draft}

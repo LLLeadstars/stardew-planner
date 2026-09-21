@@ -12,6 +12,15 @@ export type DurationSource = 'manual' | 'personal' | 'last' | 'system';
  * 不是对活动成果的预测，也不等同于系统估算时长。
  */
 export const SYSTEM_RESERVES: Record<ActivityType, number> = {
+  plant: 60,
+  water: 60,
+  harvest: 60,
+  shop: 60,
+  toolGive: 60,
+  toolTake: 60,
+  travel: 60,
+  fishing: 120,
+  mining: 120,
   custom: 30,
 };
 

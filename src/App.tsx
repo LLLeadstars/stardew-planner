@@ -11,6 +11,8 @@ import type { ActivityPatch, ActivityType, GameMinutes, SwapDirection } from './
 import { newManualId, usePlanner } from './app/usePlanner';
 import type { LoadOutcome } from './storage/port';
 import { AddActivityDialog } from './ui/AddActivityDialog';
+import type { ActivityDraft } from './ui/AddActivityDialog';
+import { ActivityTypePicker } from './ui/ActivityTypePicker';
 import { Inspector } from './ui/Inspector';
 import { LeftPanel } from './ui/LeftPanel';
 import { SetupScreen } from './ui/SetupScreen';
@@ -22,6 +24,7 @@ export function App() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [addType, setAddType] = useState<ActivityType | null>(null);
 
   const activities = state?.activities ?? [];
   const gaps = useMemo(() => freeGaps(activities), [activities]);
@@ -34,19 +37,28 @@ export function App() {
     return <SetupScreen notice={noticeFor(loadOutcome)} onStart={(day, mode) => start(day, mode)} />;
   }
 
-  function handleAdd(name: string, duration?: number) {
+  function closeAdd() {
+    setAddOpen(false);
+    setAddType(null);
+  }
+
+  function handleAdd(draft: ActivityDraft) {
+    if (!addType) return;
     const id = newManualId();
     const identity = manualIdentity(id);
     dispatch({
       kind: 'addActivity',
       identity,
-      activityType: 'custom',
-      name,
+      activityType: addType,
+      name: draft.name,
       start: firstFreeStart(activities),
-      duration,
+      duration: draft.duration,
+      note: draft.note,
+      checklist: draft.checklist,
+      details: draft.details,
     });
     setSelectedKey(identityKey(identity));
-    setAddOpen(false);
+    closeAdd();
   }
 
   function handlePatch(patch: ActivityPatch) {
@@ -109,11 +121,14 @@ export function App() {
           onToggleCompleted={handleToggleCompleted}
         />
       </div>
-      {addOpen ? (
+      {addOpen && addType === null ? (
+        <ActivityTypePicker onSelect={(type) => setAddType(type)} onCancel={closeAdd} />
+      ) : null}
+      {addOpen && addType !== null ? (
         <AddActivityDialog
-          activityType="custom"
+          activityType={addType}
           preferences={state.reserves}
-          onCancel={() => setAddOpen(false)}
+          onCancel={closeAdd}
           onSubmit={handleAdd}
         />
       ) : null}

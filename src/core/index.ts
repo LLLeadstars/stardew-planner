@@ -23,12 +23,23 @@ export {
 } from './date';
 export type { Season, GameDate } from './date';
 
-export { manualIdentity, identityKey, isActivityIdentity, isActivityType } from './activity';
+export {
+  ACTIVITY_TYPES,
+  ACTIVITY_TYPE_LABELS,
+  activityTypeLabel,
+  parseChecklist,
+  manualIdentity,
+  identityKey,
+  isActivityIdentity,
+  isActivityType,
+} from './activity';
 export type {
   Activity,
+  ActivityDetails,
   ActivityIdentity,
   ActivityType,
   CareActivityType,
+  Checklist,
   Protection,
 } from './activity';
 
@@ -49,7 +60,7 @@ export { resolveDropStart, swapAdjacentStarts } from './move';
 export type { DropTarget, SwapDirection, StartPatch } from './move';
 
 export { GAME_MODE_LABELS, createPlannerState, reducePlanner } from './planner';
-export type { GameMode, PlannerState, PlannerCommand, ActivityPatch } from './planner';
+export type { GameMode, PlannerState, PlannerCommand, ActivityPatch, NewActivityFields } from './planner';
 
 export { isActivity, isPlannerState } from './validate';
 
