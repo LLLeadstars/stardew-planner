@@ -13,11 +13,14 @@ import type {
   ActivityDetails,
   ActivityType,
   DurationSource,
+  NewCropBatchFields,
   ReservePreferences,
   ShopKey,
   ShoppingItem,
   ToolKey,
 } from '../core';
+import { CropBatchFields, DEFAULT_CROP_FIELDS, cropFieldsChosen, cropFieldsToBatchFields } from './CropBatchFields';
+import type { CropFieldsValue } from './CropBatchFields';
 import { ShoppingListEditor } from './ShoppingListEditor';
 
 /** 添加弹层交给应用层的当次内容；时长缺省表示让 reducer 走解析链。 */
@@ -27,6 +30,8 @@ export type ActivityDraft = {
   note?: string;
   checklist?: string[];
   details?: ActivityDetails;
+  /** 种植活动可同时建立计划作物批次。 */
+  crop?: NewCropBatchFields;
 };
 
 type Props = {
@@ -53,6 +58,7 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
   const isSpot = activityType === 'fishing' || activityType === 'mining';
   const isShop = activityType === 'shop';
   const isTool = activityType === 'toolGive' || activityType === 'toolTake';
+  const isPlant = activityType === 'plant';
 
   const [name, setName] = useState('');
   const [duration, setDuration] = useState(prefill.minutes);
@@ -65,6 +71,7 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
   const [target, setTarget] = useState('');
   const [shop, setShop] = useState<ShopKey | ''>('');
   const [tool, setTool] = useState<ToolKey | ''>('');
+  const [crop, setCrop] = useState<CropFieldsValue>(DEFAULT_CROP_FIELDS);
   const [shoppingRows, setShoppingRows] = useState<ShoppingItem[]>([{ name: '', quantity: '' }]);
 
   function submit(event: FormEvent) {
@@ -77,7 +84,14 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
       note: note.trim() || undefined,
       checklist: items.length ? items : undefined,
       details: buildDetails(),
+      crop: buildCrop(),
     });
+  }
+
+  /** 只有真的选了作物（内置或自定义）才建立计划批次。 */
+  function buildCrop(): NewCropBatchFields | undefined {
+    if (!isPlant || !cropFieldsChosen(crop)) return undefined;
+    return cropFieldsToBatchFields(crop);
   }
 
   function buildDetails(): ActivityDetails | undefined {
@@ -132,6 +146,8 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
             }}
           />
         </label>
+
+        {isPlant ? <CropBatchFields value={crop} onChange={setCrop} /> : null}
 
         {isTravel ? (
           <>
@@ -248,6 +264,9 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
           将占用 {formatDuration(duration)}，来自{touched ? SOURCE_LABELS.manual : SOURCE_LABELS[prefill.source]}
           （可编辑的规划起点，不是对活动成果的预测）。
         </p>
+        {activityType === 'plant' ? (
+          <p className="hint">选填作物后可建立计划作物批次；种植活动实际完成后才开始生长推进。</p>
+        ) : null}
         {isTravel ? <p className="hint">工具不估算路线；根据地点估算移动耗时属后续范围。</p> : null}
         {isSpot ? <p className="hint">V1 不估算产出或达成目标的时间。</p> : null}
         {activityType === 'toolGive' ? (

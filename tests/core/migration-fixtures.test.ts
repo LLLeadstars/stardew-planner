@@ -80,4 +80,14 @@ describe('旧格式夹具迁移', () => {
     });
     expect(result.state.playerStates.toolLevels).toEqual({ axe: 'copper' });
   });
+
+  it('v6 夹具保留工具升级状态，并补上空的作物批次', () => {
+    const result = inspectBackup(fixture('storage-v6.json'));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.version).toBe(6);
+    expect(result.state.cropBatches).toEqual([]);
+    expect(result.state.toolUpgrade).toMatchObject({ tool: 'axe', targetLevel: 'steel' });
+    expect(result.preview.cropBatchCount).toBe(0);
+  });
 });

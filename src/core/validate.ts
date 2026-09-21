@@ -1,7 +1,9 @@
 import type { Activity, ActivityDetails, ActivityType, Checklist, Protection, ShoppingItem } from './activity';
 import { isActivityIdentity, isActivityType } from './activity';
+import type { CropBatch } from './crops';
+import { isCropKey } from './crops';
 import { isShopKey } from './shop';
-import { isGameDate } from './date';
+import { isDateKey, isGameDate } from './date';
 import type { PendingToolUpgrade } from './toolUpgrade';
 import {
   COMMUNITY_CENTER_OPTIONS,
@@ -135,6 +137,28 @@ function isPendingToolUpgrade(value: unknown): value is PendingToolUpgrade | nul
   );
 }
 
+function isCropBatch(value: unknown): value is CropBatch {
+  if (!isRecord(value)) return false;
+  const planted = value.status === 'planted';
+  return (
+    typeof value.id === 'string' &&
+    value.id.length > 0 &&
+    typeof value.sourceKey === 'string' &&
+    value.sourceKey.length > 0 &&
+    (value.cropKey === null || isCropKey(value.cropKey)) &&
+    typeof value.cropName === 'string' &&
+    value.cropName.length > 0 &&
+    (value.environment === 'outdoor' || value.environment === 'greenhouse') &&
+    (value.fertilizer === 'none' || value.fertilizer === 'fertilized') &&
+    Number.isInteger(value.plantCount) &&
+    (value.plantCount as number) >= 1 &&
+    (value.status === 'planned' || value.status === 'planted') &&
+    (planted ? isGameDate(value.plantedOn) : value.plantedOn === null) &&
+    Array.isArray(value.supply) &&
+    value.supply.every(isDateKey)
+  );
+}
+
 export function isPlannerState(value: unknown): value is PlannerState {
   if (!isRecord(value)) return false;
   return (
@@ -142,6 +166,8 @@ export function isPlannerState(value: unknown): value is PlannerState {
     (value.mode === 'single' || value.mode === 'multi') &&
     Array.isArray(value.activities) &&
     value.activities.every(isActivity) &&
+    Array.isArray(value.cropBatches) &&
+    value.cropBatches.every(isCropBatch) &&
     isReservePreferences(value.reserves) &&
     isPlayerStates(value.playerStates) &&
     isPendingToolUpgrade(value.toolUpgrade)

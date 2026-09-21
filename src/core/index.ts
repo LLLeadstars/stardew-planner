@@ -20,6 +20,7 @@ export {
   WEEKDAYS,
   WEEKDAY_LABELS,
   dateKey,
+  isDateKey,
   isGameDate,
   formatDate,
   weekdayOf,
@@ -76,6 +77,34 @@ export {
   withPersonalReserve,
 } from './reserve';
 export type { DurationSource, ReservePreferences, ResolvedReserve } from './reserve';
+
+export {
+  CROPS,
+  CROP_CONDITION_LABELS,
+  CROP_ENVIRONMENT_LABELS,
+  CROP_FERTILIZER_LABELS,
+  CUSTOM_CROP_NAME,
+  cropByKey,
+  cropRuleIssue,
+  isCropKey,
+  resolveCropName,
+  createPlannedBatch,
+  activateBatch,
+  deactivateBatch,
+  updateBatch,
+  recordWatering,
+  cropGrowth,
+} from './crops';
+export type {
+  CropCondition,
+  CropDefinition,
+  CropEnvironment,
+  CropFertilizer,
+  CropBatchStatus,
+  CropBatch,
+  CropGrowth,
+  NewCropBatchFields,
+} from './crops';
 
 export {
   nextToolLevel,

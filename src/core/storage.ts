@@ -4,7 +4,7 @@ import type { GameMode, PlannerState } from './planner';
 import { isPlannerState } from './validate';
 
 /** 当前存档格式版本。未来格式版本一律拒绝，已知旧格式在此迁移。 */
-export const STORAGE_VERSION = 6;
+export const STORAGE_VERSION = 7;
 
 export type StoredDocument = {
   version: number;
@@ -25,6 +25,7 @@ export type BackupPreview = {
   mode: GameMode;
   activityCount: number;
   completedCount: number;
+  cropBatchCount: number;
   playerStateCount: number;
   personalReserveCount: number;
   lastReserveCount: number;
@@ -109,6 +110,7 @@ function previewState(state: PlannerState): BackupPreview {
     mode: state.mode,
     activityCount: state.activities.length,
     completedCount: state.activities.filter((activity) => activity.protection.completed).length,
+    cropBatchCount: state.cropBatches.length,
     playerStateCount: singleValues + (toolLevels ? Object.keys(toolLevels).length : 0),
     personalReserveCount: Object.keys(state.reserves.personal).length,
     lastReserveCount: Object.keys(state.reserves.last).length,

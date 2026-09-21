@@ -1,5 +1,7 @@
 import type { Activity, ActivityDetails, ActivityIdentity, ActivityType, Checklist } from './activity';
 import { identityKey } from './activity';
+import type { CropBatch, NewCropBatchFields } from './crops';
+import { activateBatch, createPlannedBatch, deactivateBatch, recordWatering, updateBatch } from './crops';
 import type { GameDate } from './date';
 import type { PlayerStates } from './playerState';
 import type { PlayerStateCommand } from './playerState';
@@ -21,6 +23,8 @@ export type PlannerState = {
   currentDay: GameDate;
   mode: GameMode;
   activities: Activity[];
+  /** 作物批次：由种植活动建立，种植完成后开始生长推进。 */
+  cropBatches: CropBatch[];
   reserves: ReservePreferences;
   /** 按需记录、影响内置信息与提醒的玩家状态与今天前提。 */
   playerStates: PlayerStates;
@@ -52,10 +56,21 @@ export type PlannerCommand =
       kind: 'addActivity';
       identity: ActivityIdentity;
       start: GameMinutes;
+      /** 种植活动可同时建立计划作物批次。 */
+      crop?: { id: string } & NewCropBatchFields;
     } & NewActivityFields)
   | { kind: 'editActivity'; key: string; patch: ActivityPatch }
   | { kind: 'toggleActivityCompleted'; key: string; completed?: boolean }
   | { kind: 'deleteActivity'; key: string }
+  | {
+      kind: 'recordCropSupply';
+      batchId: string;
+      date: GameDate;
+      wateredCount: number;
+      /** 部分供水拆批时使用的新批次 id，由应用层生成。 */
+      splitId: string;
+    }
+  | { kind: 'updateCropBatch'; batchId: string; patch: Partial<NewCropBatchFields> }
   | { kind: 'savePersonalReserve'; activityType: ActivityType; minutes: number }
   | PlayerStateCommand;
 
@@ -64,6 +79,7 @@ export function createPlannerState(day: GameDate, mode: GameMode): PlannerState 
     currentDay: day,
     mode,
     activities: [],
+    cropBatches: [],
     reserves: emptyReservePreferences(),
     playerStates: {},
     toolUpgrade: null,
@@ -93,6 +109,17 @@ export function reducePlanner(state: PlannerState, command: PlannerCommand): Pla
       return {
         ...state,
         activities: [...state.activities, activity],
+        cropBatches:
+          command.crop && command.activityType === 'plant'
+            ? [
+                ...state.cropBatches,
+                createPlannedBatch(
+                  command.crop.id,
+                  identityKey(command.identity),
+                  command.crop,
+                ),
+              ]
+            : state.cropBatches,
         reserves:
           command.duration === undefined
             ? state.reserves
@@ -120,6 +147,10 @@ export function reducePlanner(state: PlannerState, command: PlannerCommand): Pla
         ...state,
         activities: state.activities.filter(
           (activity) => identityKey(activity.identity) !== command.key,
+        ),
+        // 未种植的计划批次随种植活动一起移除；已种植批次独立存续。
+        cropBatches: state.cropBatches.filter(
+          (batch) => batch.sourceKey !== command.key || batch.status === 'planted',
         ),
       };
     }
@@ -178,7 +209,36 @@ export function reducePlanner(state: PlannerState, command: PlannerCommand): Pla
         });
       }
 
-      return withFlag(state);
+      const cropBatches = state.cropBatches.map((batch) =>
+        batch.sourceKey === command.key && target.activityType === 'plant'
+          ? completed
+            ? activateBatch(batch, state.currentDay)
+            : deactivateBatch(batch)
+          : batch,
+      );
+      return withFlag({ ...state, cropBatches });
+    }
+    case 'recordCropSupply': {
+      const index = state.cropBatches.findIndex((batch) => batch.id === command.batchId);
+      if (index < 0) return state;
+      const batch = state.cropBatches[index]!;
+      const replacements = recordWatering(
+        batch,
+        command.date,
+        command.wateredCount,
+        command.splitId,
+      );
+      const cropBatches = [...state.cropBatches];
+      cropBatches.splice(index, 1, ...replacements);
+      return { ...state, cropBatches };
+    }
+    case 'updateCropBatch': {
+      return {
+        ...state,
+        cropBatches: state.cropBatches.map((batch) =>
+          batch.id === command.batchId ? updateBatch(batch, command.patch) : batch,
+        ),
+      };
     }
     case 'savePersonalReserve': {
       return {

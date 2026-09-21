@@ -15,6 +15,11 @@ export function dateKey(date: GameDate): string {
   return `${date.year}-${date.season}-${date.day}`;
 }
 
+/** 日期键格式校验，与 dateKey 保持同一格式。 */
+export function isDateKey(value: unknown): value is string {
+  return typeof value === 'string' && /^\d+-\d-\d+$/.test(value);
+}
+
 export function isGameDate(value: unknown): value is GameDate {
   if (typeof value !== 'object' || value === null) return false;
   const record = value as Record<string, unknown>;

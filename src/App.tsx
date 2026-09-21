@@ -7,7 +7,7 @@ import {
   overruns,
   swapAdjacentStarts,
 } from './core';
-import type { ActivityPatch, ActivityType, GameMinutes, SwapDirection } from './core';
+import type { ActivityPatch, ActivityType, GameMinutes, NewCropBatchFields, SwapDirection } from './core';
 import { newManualId, usePlanner } from './app/usePlanner';
 import type { LoadOutcome } from './storage/port';
 import { AddActivityDialog } from './ui/AddActivityDialog';
@@ -29,6 +29,7 @@ export function App() {
   const [storageOpen, setStorageOpen] = useState(false);
 
   const activities = state?.activities ?? [];
+  const currentDay = state?.currentDay;
   const gaps = useMemo(() => freeGaps(activities), [activities]);
   const overrunCount = useMemo(() => overruns(activities).length, [activities]);
   const selected = selectedKey
@@ -74,6 +75,7 @@ export function App() {
       note: draft.note,
       checklist: draft.checklist,
       details: draft.details,
+      crop: draft.crop ? { id: newManualId(), ...draft.crop } : undefined,
     });
     setSelectedKey(identityKey(identity));
     closeAdd();
@@ -97,6 +99,21 @@ export function App() {
 
   function handleSaveDefault(activityType: ActivityType, minutes: number) {
     dispatch({ kind: 'savePersonalReserve', activityType, minutes });
+  }
+
+  function handleUpdateBatch(batchId: string, patch: Partial<NewCropBatchFields>) {
+    dispatch({ kind: 'updateCropBatch', batchId, patch });
+  }
+
+  function handleRecordSupply(batchId: string, wateredCount: number) {
+    if (!currentDay) return;
+    dispatch({
+      kind: 'recordCropSupply',
+      batchId,
+      date: currentDay,
+      wateredCount,
+      splitId: newManualId(),
+    });
   }
 
   function handleDelete() {
@@ -146,10 +163,13 @@ export function App() {
           playerStates={state.playerStates}
           preferences={state.reserves}
           toolUpgrade={state.toolUpgrade}
+          cropBatches={state.cropBatches}
           onPatch={handlePatch}
           onSaveDefault={handleSaveDefault}
           onDelete={handleDelete}
           onToggleCompleted={handleToggleCompleted}
+          onUpdateBatch={handleUpdateBatch}
+          onRecordSupply={handleRecordSupply}
           onSetState={dispatch}
         />
       </div>

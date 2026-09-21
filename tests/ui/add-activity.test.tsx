@@ -227,3 +227,63 @@ describe('添加工具升级交付与取回活动', () => {
     expect(container.textContent).toContain('背包空位');
   });
 });
+
+describe('添加种植活动：作物批次条件', () => {
+  it('未选择作物时只创建种植活动，不建立批次', () => {
+    const onSubmit = vi.fn<(draft: ActivityDraft) => void>();
+    mount('plant', { personal: {}, last: {} }, onSubmit);
+    submit();
+    expect(onSubmit.mock.calls[0]![0].crop).toBeUndefined();
+    expect(container.textContent).toContain('选填作物后可建立计划作物批次');
+  });
+
+  it('选择内置作物后把批次条件交给应用层', () => {
+    const onSubmit = vi.fn<(draft: ActivityDraft) => void>();
+    mount('plant', { personal: {}, last: {} }, onSubmit);
+    choose(container.querySelector<HTMLSelectElement>('[data-field="crop"]')!, 'parsnip');
+    setValue(field('plant-count'), '10');
+    submit();
+    expect(onSubmit.mock.calls[0]![0].crop).toEqual({
+      cropKey: 'parsnip',
+      cropName: undefined,
+      environment: 'outdoor',
+      fertilizer: 'none',
+      plantCount: 10,
+    });
+    expect(container.textContent).toContain('预计首次生长 4 天');
+  });
+
+  it('温室或施肥条件当场提示「规则未验证」', () => {
+    mount('plant');
+    choose(container.querySelector<HTMLSelectElement>('[data-field="crop"]')!, 'parsnip');
+    choose(container.querySelector<HTMLSelectElement>('[data-field="crop-environment"]')!, 'greenhouse');
+    expect(container.querySelector('[data-testid="crop-rule-issue"]')?.textContent).toContain(
+      '温室条件',
+    );
+    choose(container.querySelector<HTMLSelectElement>('[data-field="crop-environment"]')!, 'outdoor');
+    choose(container.querySelector<HTMLSelectElement>('[data-field="crop-fertilizer"]')!, 'fertilized');
+    expect(container.querySelector('[data-testid="crop-rule-issue"]')?.textContent).toContain(
+      '肥料条件',
+    );
+  });
+
+  it('自定义作物名称写入批次，规则未验证', () => {
+    const onSubmit = vi.fn<(draft: ActivityDraft) => void>();
+    mount('plant', { personal: {}, last: {} }, onSubmit);
+    choose(container.querySelector<HTMLSelectElement>('[data-field="crop"]')!, '__custom__');
+    setValue(field('crop-name'), '魔法豆');
+    submit();
+    expect(onSubmit.mock.calls[0]![0].crop).toEqual({
+      cropKey: null,
+      cropName: '魔法豆',
+      environment: 'outdoor',
+      fertilizer: 'none',
+      plantCount: 1,
+    });
+  });
+
+  it('非种植活动不出现作物字段', () => {
+    mount('water');
+    expect(container.querySelector('[data-field="crop"]')).toBeNull();
+  });
+});

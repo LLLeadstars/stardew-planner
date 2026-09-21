@@ -182,6 +182,8 @@ function BackupPreviewCard({
         <dd>
           {preview.activityCount} 项（已完成 {preview.completedCount}）
         </dd>
+        <dt>作物批次</dt>
+        <dd>{preview.cropBatchCount} 批</dd>
         <dt>玩家状态</dt>
         <dd>{preview.playerStateCount} 项</dd>
         <dt>个人默认预留</dt>

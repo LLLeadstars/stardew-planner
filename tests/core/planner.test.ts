@@ -36,6 +36,7 @@ describe('日程 reducer', () => {
       currentDay: day,
       mode: 'single',
       activities: [],
+      cropBatches: [],
       reserves: { personal: {}, last: {} },
       playerStates: {},
       toolUpgrade: null,

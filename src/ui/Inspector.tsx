@@ -3,7 +3,10 @@ import type {
   Activity,
   ActivityPatch,
   ActivityType,
+  CropBatch,
+  CropGrowth,
   GameDate,
+  NewCropBatchFields,
   PendingToolUpgrade,
   PlayerStateCommand,
   PlayerStateKey,
@@ -33,10 +36,12 @@ import {
   activityStateKeys,
   canDeliverTool,
   canPickupTool,
+  cropGrowth,
   earliestPickupDate,
   formatDate,
   formatDuration,
   formatTime,
+  identityKey,
   judgeShop,
   parseChecklist,
   systemReserve,
@@ -44,6 +49,7 @@ import {
   toolUpgradeOffer,
   toolUpgradePhase,
 } from '../core';
+import { CropBatchFields, cropFieldsFromBatch, cropFieldsToBatchFields } from './CropBatchFields';
 import { ShopAvailabilityList } from './ShopAvailability';
 import { ShoppingListEditor } from './ShoppingListEditor';
 
@@ -54,10 +60,14 @@ type Props = {
   preferences: ReservePreferences;
   /** 当前正在升级或待取回的工具；后台等待，不占用日程时间。 */
   toolUpgrade: PendingToolUpgrade | null;
+  /** 当前日程里的全部作物批次；种植活动只展示与其身份关联的部分。 */
+  cropBatches: CropBatch[];
   onPatch: (patch: ActivityPatch) => void;
   onSaveDefault: (activityType: ActivityType, minutes: number) => void;
   onDelete: () => void;
   onToggleCompleted?: (completed: boolean) => void;
+  onUpdateBatch: (batchId: string, patch: Partial<NewCropBatchFields>) => void;
+  onRecordSupply: (batchId: string, wateredCount: number) => void;
   onSetState: (command: PlayerStateCommand) => void;
 };
 
@@ -75,10 +85,13 @@ export function Inspector({
   playerStates,
   preferences,
   toolUpgrade,
+  cropBatches,
   onPatch,
   onSaveDefault,
   onDelete,
   onToggleCompleted = () => {},
+  onUpdateBatch,
+  onRecordSupply,
   onSetState,
 }: Props) {
   if (!activity) {
@@ -97,6 +110,12 @@ export function Inspector({
   const isShop = activity.activityType === 'shop';
   const isToolGive = activity.activityType === 'toolGive';
   const isToolTake = activity.activityType === 'toolTake';
+  const isPlant = activity.activityType === 'plant';
+  const plantBatches = isPlant
+    ? cropBatches.filter(
+        (batch) => batch.sourceKey === identityKey(activity.identity),
+      )
+    : [];
   const shoppingList = details.shoppingList ?? [];
   const conditionKeys = isShop ? activityStateKeys(activity) : [];
   const judgement: ShopJudgement | null =
@@ -154,6 +173,15 @@ export function Inspector({
         </select>
       </label>
       <DurationField value={activity.duration} onCommit={(duration) => onPatch({ duration })} />
+
+      {isPlant ? (
+        <PlantInspector
+          batches={plantBatches}
+          currentDay={currentDay}
+          onUpdateBatch={onUpdateBatch}
+          onRecordSupply={onRecordSupply}
+        />
+      ) : null}
 
       {isShop ? (
         <ShopInspector
@@ -295,6 +323,113 @@ export function Inspector({
         删除活动
       </button>
     </aside>
+  );
+}
+
+/** 种植活动的作物批次区块：条件可编辑，已种植批次可记录今日供水。 */
+function PlantInspector({
+  batches,
+  currentDay,
+  onUpdateBatch,
+  onRecordSupply,
+}: {
+  batches: CropBatch[];
+  currentDay: GameDate;
+  onUpdateBatch: (batchId: string, patch: Partial<NewCropBatchFields>) => void;
+  onRecordSupply: (batchId: string, wateredCount: number) => void;
+}) {
+  if (!batches.length) {
+    return (
+      <p className="hint">
+        该种植活动还没有作物批次；新建时选择作物即可建立计划批次，实际完成后再开始生长推进。
+      </p>
+    );
+  }
+  return (
+    <div className="crop-batches">
+      {batches.map((batch) => (
+        <CropBatchCard
+          key={batch.id}
+          batch={batch}
+          currentDay={currentDay}
+          onUpdateBatch={onUpdateBatch}
+          onRecordSupply={onRecordSupply}
+        />
+      ))}
+    </div>
+  );
+}
+
+function cropGrowthText(growth: CropGrowth): string {
+  if (growth.status === 'planned') return '计划中：完成种植后开始生长推进。';
+  if (growth.status === 'unverified') return growth.reason;
+  const parts = [`首次预计收获：${formatDate(growth.firstHarvest)}`];
+  parts.push(`生长 ${growth.wateredDays}/${growth.growthDays} 天`);
+  if (growth.stalledDays) parts.push(`已按漏浇顺延 ${growth.stalledDays} 天`);
+  if (growth.conditional) parts.push('条件性预计：部分日期尚无供水记录');
+  return parts.join('；');
+}
+
+function CropBatchCard({
+  batch,
+  currentDay,
+  onUpdateBatch,
+  onRecordSupply,
+}: {
+  batch: CropBatch;
+  currentDay: GameDate;
+  onUpdateBatch: (batchId: string, patch: Partial<NewCropBatchFields>) => void;
+  onRecordSupply: (batchId: string, wateredCount: number) => void;
+}) {
+  const growth = cropGrowth(batch, currentDay);
+  const [supplyCount, setSupplyCount] = useState(batch.plantCount);
+
+  useEffect(() => {
+    setSupplyCount(batch.plantCount);
+  }, [batch.plantCount]);
+
+  return (
+    <div className="crop-batch" data-testid="crop-batch" data-batch-id={batch.id}>
+      <div className="crop-batch-head">
+        <strong data-testid="crop-batch-name">{batch.cropName}</strong>
+        <span className="crop-status" data-status={batch.status}>
+          {batch.status === 'planted' ? '已种植' : '计划中'}
+        </span>
+      </div>
+      <CropBatchFields
+        value={cropFieldsFromBatch(batch)}
+        onChange={(next) => onUpdateBatch(batch.id, cropFieldsToBatchFields(next))}
+      />
+      <p className="hint" data-testid="crop-growth">
+        {cropGrowthText(growth)}
+      </p>
+      {batch.status === 'planted' ? (
+        <div className="supply-row">
+          <label>
+            今日供水株数
+            <input
+              type="number"
+              data-field="supply-count"
+              min={0}
+              step={1}
+              value={supplyCount}
+              onChange={(event) => {
+                const next = event.target.valueAsNumber;
+                if (!Number.isNaN(next)) setSupplyCount(next);
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="ghost"
+            data-action="record-supply"
+            onClick={() => onRecordSupply(batch.id, supplyCount)}
+          >
+            记录今日供水
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

@@ -1,0 +1,30 @@
+{
+  "version": 6,
+  "state": {
+    "currentDay": { "year": 1, "season": 0, "day": 3 },
+    "mode": "single",
+    "activities": [
+      {
+        "identity": { "kind": "manual", "id": "give" },
+        "activityType": "toolGive",
+        "name": "交付斧头",
+        "start": 600,
+        "duration": 60,
+        "protection": { "editedByPlayer": false, "completed": true },
+        "details": { "tool": "axe" }
+      }
+    ],
+    "reserves": { "personal": {}, "last": {} },
+    "playerStates": {
+      "communityCenter": "notRestored",
+      "toolLevels": { "axe": "copper" }
+    },
+    "toolUpgrade": {
+      "tool": "axe",
+      "fromLevel": "copper",
+      "targetLevel": "steel",
+      "deliveredOn": { "year": 1, "season": 0, "day": 3 },
+      "completesOn": { "year": 1, "season": 0, "day": 5 }
+    }
+  }
+}

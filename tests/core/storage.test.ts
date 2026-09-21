@@ -142,6 +142,58 @@ describe('玩家状态与今天前提的存档', () => {
   });
 });
 
+describe('作物批次的存档', () => {
+  function plantState(): PlannerState {
+    return reducePlanner(createPlannerState(day, 'single'), {
+      kind: 'addActivity',
+      identity: manualIdentity('p'),
+      activityType: 'plant',
+      name: '种防风草',
+      start: 360,
+      crop: {
+        id: 'batch-p',
+        cropKey: 'parsnip',
+        environment: 'outdoor',
+        fertilizer: 'none',
+        plantCount: 10,
+      },
+    });
+  }
+
+  it('往返后保留计划作物批次与供水记录', () => {
+    let state = plantState();
+    state = reducePlanner(state, {
+      kind: 'recordCropSupply',
+      batchId: 'batch-p',
+      date: day,
+      wateredCount: 6,
+      splitId: 'split-1',
+    });
+    expect(deserializeState(serializeState(state))).toEqual({ ok: true, state });
+  });
+
+  it('拒绝状态与种植日期矛盾的批次', () => {
+    const base = serializeState(plantState());
+    const parsed = JSON.parse(base) as { state: { cropBatches: Record<string, unknown>[] } };
+    parsed.state.cropBatches[0]!.status = 'planted';
+    parsed.state.cropBatches[0]!.plantedOn = null;
+    expect(deserializeState(JSON.stringify({ version: STORAGE_VERSION, state: parsed.state }))).toEqual({
+      ok: false,
+      reason: 'corrupt',
+    });
+  });
+
+  it('拒绝未知的作物键', () => {
+    const base = serializeState(plantState());
+    const parsed = JSON.parse(base) as { state: { cropBatches: Record<string, unknown>[] } };
+    parsed.state.cropBatches[0]!.cropKey = 'dragon_fruit';
+    expect(deserializeState(JSON.stringify({ version: STORAGE_VERSION, state: parsed.state }))).toEqual({
+      ok: false,
+      reason: 'corrupt',
+    });
+  });
+});
+
 describe('导入预览与导出信封', () => {
   it('解析备份后给出领域数据摘要，并保留完整状态', () => {
     let state = createPlannerState(day, 'multi');
@@ -174,6 +226,7 @@ describe('导入预览与导出信封', () => {
       mode: 'multi',
       activityCount: 2,
       completedCount: 1,
+      cropBatchCount: 0,
       playerStateCount: 1,
       personalReserveCount: 1,
       lastReserveCount: 1,
@@ -184,13 +237,13 @@ describe('导入预览与导出信封', () => {
     const original = sampleState();
     const withFutureData = {
       ...original,
-      cropBatches: [{ id: 'batch-1', crop: '防风草' }],
+      goals: [{ id: 'goal-1', title: '社区中心' }],
     } as unknown as PlannerState;
     const result = inspectBackup(serializeState(withFutureData));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect((result.state as unknown as { cropBatches: unknown }).cropBatches).toEqual([
-      { id: 'batch-1', crop: '防风草' },
+    expect((result.state as unknown as { goals: unknown }).goals).toEqual([
+      { id: 'goal-1', title: '社区中心' },
     ]);
   });
 

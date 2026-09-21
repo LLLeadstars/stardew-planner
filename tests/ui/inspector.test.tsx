@@ -7,12 +7,14 @@ import type {
   Activity,
   ActivityPatch,
   ActivityType,
+  CropBatch,
   GameDate,
+  NewCropBatchFields,
   PendingToolUpgrade,
   PlayerStateCommand,
   PlayerStates,
 } from '../../src/core';
-import { createPendingToolUpgrade } from '../../src/core';
+import { activateBatch, createPendingToolUpgrade, createPlannedBatch } from '../../src/core';
 import { Inspector } from '../../src/ui/Inspector';
 import { makeActivity } from '../helpers';
 
@@ -50,6 +52,9 @@ function renderInspector(
     onSaveDefault?: (activityType: ActivityType, minutes: number) => void;
     onSetState?: (command: PlayerStateCommand) => void;
     toolUpgrade?: PendingToolUpgrade | null;
+    cropBatches?: CropBatch[];
+    onUpdateBatch?: (batchId: string, patch: Partial<NewCropBatchFields>) => void;
+    onRecordSupply?: (batchId: string, wateredCount: number) => void;
   } = {},
 ) {
   mount(
@@ -59,9 +64,12 @@ function renderInspector(
       playerStates={overrides.playerStates ?? {}}
       preferences={overrides.preferences ?? { personal: {}, last: {} }}
       toolUpgrade={overrides.toolUpgrade ?? null}
+      cropBatches={overrides.cropBatches ?? []}
       onPatch={overrides.onPatch ?? (() => {})}
       onSaveDefault={overrides.onSaveDefault ?? (() => {})}
       onDelete={() => {}}
+      onUpdateBatch={overrides.onUpdateBatch ?? (() => {})}
+      onRecordSupply={overrides.onRecordSupply ?? (() => {})}
       onSetState={overrides.onSetState ?? (() => {})}
     />,
   );
@@ -362,5 +370,90 @@ describe('检查器：交付后的完成日与最早可取回日期', () => {
     expect(text).toContain('完成日');
     expect(text).toContain('最早可取回');
     expect(text).toContain('第 1 年 春 6 日');
+  });
+});
+
+describe('检查器：种植活动的作物批次', () => {
+  function plantActivity() {
+    return makeActivity({ id: 'p', start: 360, duration: 60, activityType: 'plant' });
+  }
+
+  function plantedBatch(overrides: Partial<Parameters<typeof createPlannedBatch>[2]> = {}) {
+    return activateBatch(
+      createPlannedBatch('batch-p', 'manual:p', {
+        cropKey: 'parsnip',
+        environment: 'outdoor',
+        fertilizer: 'none',
+        plantCount: 10,
+        ...overrides,
+      }),
+      WEDNESDAY,
+    );
+  }
+
+  it('没有批次时说明如何建立计划批次', () => {
+    renderInspector(plantActivity());
+    expect(container.textContent).toContain('还没有作物批次');
+  });
+
+  it('已种植批次显示状态与首次预计收获日期', () => {
+    renderInspector(plantActivity(), { cropBatches: [plantedBatch()] });
+    expect(container.querySelector('[data-testid="crop-batch-name"]')?.textContent).toContain('防风草');
+    expect(container.querySelector('[data-status="planted"]')?.textContent).toContain('已种植');
+    const growth = container.querySelector('[data-testid="crop-growth"]')?.textContent ?? '';
+    expect(growth).toContain('首次预计收获');
+    expect(growth).toContain('第 1 年 春 7 日');
+    expect(growth).toContain('条件性预计');
+  });
+
+  it('规则未验证的批次显示黄色提示，不给日期', () => {
+    renderInspector(plantActivity(), {
+      cropBatches: [plantedBatch({ environment: 'greenhouse' })],
+    });
+    const growth = container.querySelector('[data-testid="crop-growth"]')?.textContent ?? '';
+    expect(growth).toContain('规则未验证');
+    expect(growth).toContain('温室条件');
+    expect(growth).not.toContain('首次预计收获');
+  });
+
+  it('计划批次说明完成后才开始生长', () => {
+    const planned = createPlannedBatch('batch-p', 'manual:p', {
+      cropKey: 'parsnip',
+      environment: 'outdoor',
+      fertilizer: 'none',
+      plantCount: 10,
+    });
+    renderInspector(plantActivity(), { cropBatches: [planned] });
+    expect(container.querySelector('[data-testid="crop-growth"]')?.textContent).toContain(
+      '完成种植后开始生长',
+    );
+    expect(container.querySelector('[data-action="record-supply"]')).toBeNull();
+  });
+
+  it('记录今日供水把批次与株数交给应用层', () => {
+    const onRecordSupply = vi.fn<(batchId: string, wateredCount: number) => void>();
+    renderInspector(plantActivity(), { cropBatches: [plantedBatch()], onRecordSupply });
+    setValue(field('supply-count'), '6');
+    act(() => {
+      button('record-supply').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onRecordSupply).toHaveBeenCalledWith('batch-p', 6);
+  });
+
+  it('编辑批次条件写回应用层', () => {
+    const onUpdateBatch = vi.fn<(batchId: string, patch: Partial<NewCropBatchFields>) => void>();
+    renderInspector(plantActivity(), { cropBatches: [plantedBatch()], onUpdateBatch });
+    choose(container.querySelector<HTMLSelectElement>('[data-field="crop-fertilizer"]')!, 'fertilized');
+    expect(onUpdateBatch).toHaveBeenCalledWith(
+      'batch-p',
+      expect.objectContaining({ fertilizer: 'fertilized' }),
+    );
+  });
+
+  it('非种植活动不显示作物批次区块', () => {
+    renderInspector(makeActivity({ id: 'w', start: 360, duration: 60, activityType: 'water' }), {
+      cropBatches: [plantedBatch()],
+    });
+    expect(container.querySelector('[data-testid="crop-batch"]')).toBeNull();
   });
 });
