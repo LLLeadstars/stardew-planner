@@ -208,3 +208,22 @@ describe('添加购物活动：门店与购物清单项', () => {
     expect(container.querySelector('[data-field="shop"]')).not.toBeNull();
   });
 });
+
+describe('添加工具升级交付与取回活动', () => {
+  it('交付活动可选工具，并把工具写进当次信息', () => {
+    const onSubmit = vi.fn<(draft: ActivityDraft) => void>();
+    mount('toolGive', { personal: {}, last: {} }, onSubmit);
+    choose(container.querySelector<HTMLSelectElement>('[data-field="tool"]')!, 'axe');
+    submit();
+    expect(onSubmit.mock.calls[0]![0].details).toEqual({ tool: 'axe' });
+    expect(container.textContent).toContain('交付日 +2 天');
+  });
+
+  it('取回活动说明背包空位提醒，且不出现门店或出行字段', () => {
+    mount('toolTake');
+    expect(container.querySelector('[data-field="tool"]')).not.toBeNull();
+    expect(container.querySelector('[data-field="shop"]')).toBeNull();
+    expect(container.querySelector('[data-field="from"]')).toBeNull();
+    expect(container.textContent).toContain('背包空位');
+  });
+});

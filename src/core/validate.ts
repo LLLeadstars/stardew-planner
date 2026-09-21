@@ -2,6 +2,7 @@ import type { Activity, ActivityDetails, ActivityType, Checklist, Protection, Sh
 import { isActivityIdentity, isActivityType } from './activity';
 import { isShopKey } from './shop';
 import { isGameDate } from './date';
+import type { PendingToolUpgrade } from './toolUpgrade';
 import {
   COMMUNITY_CENTER_OPTIONS,
   ROBIN_WORKING_OPTIONS,
@@ -59,6 +60,7 @@ function isActivityDetails(value: unknown): value is ActivityDetails {
     if (DETAIL_STRING_KEYS.has(key)) return typeof entry === 'string';
     if (key === 'shop') return isShopKey(entry);
     if (key === 'shoppingList') return isShoppingList(entry);
+    if (key === 'tool') return isOptionValue(TOOL_OPTIONS, entry);
     return false;
   });
 }
@@ -121,6 +123,18 @@ function isPlayerStates(value: unknown): value is PlayerStates {
   );
 }
 
+function isPendingToolUpgrade(value: unknown): value is PendingToolUpgrade | null {
+  if (value === null) return true;
+  if (!isRecord(value)) return false;
+  return (
+    isOptionValue(TOOL_OPTIONS, value.tool) &&
+    isOptionValue(TOOL_LEVEL_OPTIONS, value.fromLevel) &&
+    isOptionValue(TOOL_LEVEL_OPTIONS, value.targetLevel) &&
+    isGameDate(value.deliveredOn) &&
+    isGameDate(value.completesOn)
+  );
+}
+
 export function isPlannerState(value: unknown): value is PlannerState {
   if (!isRecord(value)) return false;
   return (
@@ -129,6 +143,7 @@ export function isPlannerState(value: unknown): value is PlannerState {
     Array.isArray(value.activities) &&
     value.activities.every(isActivity) &&
     isReservePreferences(value.reserves) &&
-    isPlayerStates(value.playerStates)
+    isPlayerStates(value.playerStates) &&
+    isPendingToolUpgrade(value.toolUpgrade)
   );
 }

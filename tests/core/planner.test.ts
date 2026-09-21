@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DAY_END,
   LAST_START,
+  addDays,
   createPlannerState,
   identityKey,
   manualIdentity,
@@ -37,6 +38,7 @@ describe('日程 reducer', () => {
       activities: [],
       reserves: { personal: {}, last: {} },
       playerStates: {},
+      toolUpgrade: null,
     });
   });
 
@@ -220,5 +222,124 @@ describe('日程 reducer', () => {
     expect(identityKey(manualIdentity('x'))).toBe('manual:x');
     expect(identityKey({ kind: 'series', seriesId: 's1', date: day })).toBe('series:s1:1-0-3');
     expect(identityKey({ kind: 'care', batchId: 'b1', date: day, type: 'water' })).toBe('care:b1:1-0-3:water');
+  });
+});
+
+describe('工具升级 reducer：交付、取回与一次性', () => {
+  function give(state: PlannerState, id: string, tool: 'axe' | 'pickaxe', start = 600): PlannerState {
+    return reducePlanner(state, {
+      kind: 'addActivity',
+      identity: manualIdentity(id),
+      activityType: 'toolGive',
+      name: `交付 ${tool}`,
+      start,
+      details: { tool },
+    });
+  }
+
+  function take(state: PlannerState, id: string, tool: 'axe'): PlannerState {
+    return reducePlanner(state, {
+      kind: 'addActivity',
+      identity: manualIdentity(id),
+      activityType: 'toolTake',
+      name: `取回 ${tool}`,
+      start: 700,
+      details: { tool },
+    });
+  }
+
+  function toggle(state: PlannerState, id: string, completed?: boolean): PlannerState {
+    return reducePlanner(state, {
+      kind: 'toggleActivityCompleted',
+      key: identityKey(manualIdentity(id)),
+      completed,
+    });
+  }
+
+  it('只计划交付但未标记完成时，工具状态不变', () => {
+    let state = createPlannerState(day, 'single');
+    state = reducePlanner(state, { kind: 'setToolLevel', tool: 'axe', level: 'copper' });
+    state = give(state, 'give', 'axe');
+    expect(state.toolUpgrade).toBeNull();
+    expect(state.activities).toHaveLength(1);
+  });
+
+  it('完成交付后进入升级中，给出 D+2 完成日，且后台等待不产生任何日程活动', () => {
+    let state = createPlannerState(day, 'single');
+    state = reducePlanner(state, { kind: 'setToolLevel', tool: 'axe', level: 'copper' });
+    state = give(state, 'give', 'axe');
+    const before = state.activities.length;
+    state = toggle(state, 'give', true);
+    expect(state.toolUpgrade).toMatchObject({
+      tool: 'axe',
+      fromLevel: 'copper',
+      targetLevel: 'steel',
+      deliveredOn: day,
+      completesOn: addDays(day, 2),
+    });
+    expect(state.activities).toHaveLength(before);
+    expect(state.activities[0]?.protection.completed).toBe(true);
+  });
+
+  it('当前等级未知时不进入升级中，交付保持未完成', () => {
+    let state = give(createPlannerState(day, 'single'), 'give', 'axe');
+    state = toggle(state, 'give', true);
+    expect(state.toolUpgrade).toBeNull();
+    expect(state.activities[0]?.protection.completed).toBe(false);
+  });
+
+  it('上一件完成取回前再次发起交付被拒绝，第二项保持未完成', () => {
+    let state = createPlannerState(day, 'single');
+    state = reducePlanner(state, { kind: 'setToolLevel', tool: 'axe', level: 'copper' });
+    state = give(state, 'give1', 'axe');
+    state = toggle(state, 'give1', true);
+    state = give(state, 'give2', 'pickaxe', 700);
+    state = toggle(state, 'give2', true);
+    expect(state.toolUpgrade?.tool).toBe('axe');
+    expect(
+      state.activities.find(
+        (activity) => identityKey(activity.identity) === identityKey(manualIdentity('give2')),
+      )?.protection.completed,
+    ).toBe(false);
+  });
+
+  it('完成取回后工具等级更新、升级记录清空，且不新增日程活动', () => {
+    let state = createPlannerState(day, 'single');
+    state = reducePlanner(state, { kind: 'setToolLevel', tool: 'axe', level: 'copper' });
+    state = reducePlanner(state, { kind: 'setCommunityCenter', value: 'notRestored' });
+    state = give(state, 'give', 'axe');
+    state = toggle(state, 'give', true);
+    state = { ...state, currentDay: addDays(day, 2) };
+    state = take(state, 'take', 'axe');
+    const before = state.activities.length;
+    state = toggle(state, 'take', true);
+    expect(state.playerStates.toolLevels?.axe).toBe('steel');
+    expect(state.toolUpgrade).toBeNull();
+    expect(state.activities).toHaveLength(before);
+  });
+
+  it('未到完成日就标记取回会被拒绝', () => {
+    let state = createPlannerState(day, 'single');
+    state = reducePlanner(state, { kind: 'setToolLevel', tool: 'axe', level: 'copper' });
+    state = give(state, 'give', 'axe');
+    state = toggle(state, 'give', true);
+    state = take(state, 'take', 'axe');
+    state = toggle(state, 'take', true);
+    expect(state.toolUpgrade?.tool).toBe('axe');
+    expect(
+      state.activities.find(
+        (activity) => identityKey(activity.identity) === identityKey(manualIdentity('take')),
+      )?.protection.completed,
+    ).toBe(false);
+  });
+
+  it('撤销已完成交付会取消升级事实', () => {
+    let state = createPlannerState(day, 'single');
+    state = reducePlanner(state, { kind: 'setToolLevel', tool: 'axe', level: 'copper' });
+    state = give(state, 'give', 'axe');
+    state = toggle(state, 'give', true);
+    state = toggle(state, 'give', false);
+    expect(state.toolUpgrade).toBeNull();
+    expect(state.activities[0]?.protection.completed).toBe(false);
   });
 });

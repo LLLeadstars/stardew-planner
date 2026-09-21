@@ -23,6 +23,10 @@ export {
   isGameDate,
   formatDate,
   weekdayOf,
+  dateOrdinal,
+  fromOrdinal,
+  addDays,
+  compareDate,
 } from './date';
 export type { Season, GameDate, Weekday } from './date';
 
@@ -72,6 +76,27 @@ export {
   withPersonalReserve,
 } from './reserve';
 export type { DurationSource, ReservePreferences, ResolvedReserve } from './reserve';
+
+export {
+  nextToolLevel,
+  toolLabel,
+  toolUpgradeOffer,
+  createPendingToolUpgrade,
+  toolUpgradePhase,
+  isBlacksmithCounterOpen,
+  earliestPickupDate,
+  canDeliverTool,
+  canPickupTool,
+  TOOL_UPGRADE_PHASE_LABELS,
+  PICKUP_BAG_SLOT_REMINDER,
+} from './toolUpgrade';
+export type {
+  UpgradeMaterial,
+  ToolUpgradeOffer,
+  PendingToolUpgrade,
+  ToolUpgradePhase,
+  ToolUpgradeCheck,
+} from './toolUpgrade';
 
 export {
   WEATHER_OPTIONS,

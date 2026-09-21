@@ -198,3 +198,21 @@ describe('拖动落点与高亮', () => {
     expect(onMove).toHaveBeenCalledWith(identityKey({ kind: 'manual', id: 'moved' }), 360);
   });
 });
+
+describe('时间轴：工具升级交付与取回卡片', () => {
+  it('交付卡片显示工具名', () => {
+    mount([
+      makeActivity({ id: 'give', start: 600, duration: 60, activityType: 'toolGive', details: { tool: 'axe' } }),
+    ]);
+    expect(cards()[0]?.textContent).toContain('斧头');
+  });
+
+  it('取回卡片显示背包空位提醒', () => {
+    mount([
+      makeActivity({ id: 'take', start: 600, duration: 60, activityType: 'toolTake', details: { tool: 'can' } }),
+    ]);
+    const text = cards()[0]?.textContent ?? '';
+    expect(text).toContain('喷壶');
+    expect(text).toContain('背包空位');
+  });
+});

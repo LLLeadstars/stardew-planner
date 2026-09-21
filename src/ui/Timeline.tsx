@@ -21,6 +21,7 @@ import {
   identityKey,
   resolveDropStart,
   sortedActivities,
+  toolLabel,
 } from '../core';
 import { ShopAvailabilityList } from './ShopAvailability';
 
@@ -298,6 +299,12 @@ function ActivityCard({
 function detailSummary(activity: Activity): string | null {
   const details = activity.details;
   if (!details) return null;
+  if (activity.activityType === 'toolGive') {
+    return details.tool ? toolLabel(details.tool) : null;
+  }
+  if (activity.activityType === 'toolTake') {
+    return details.tool ? `${toolLabel(details.tool)} · 取回前留出背包空位` : '取回前留出背包空位';
+  }
   if (activity.activityType === 'travel') {
     if (details.from && details.to) return `${details.from} → ${details.to}`;
     if (details.from) return `起点 ${details.from}`;

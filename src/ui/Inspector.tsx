@@ -4,6 +4,7 @@ import type {
   ActivityPatch,
   ActivityType,
   GameDate,
+  PendingToolUpgrade,
   PlayerStateCommand,
   PlayerStateKey,
   PlayerStates,
@@ -11,6 +12,9 @@ import type {
   ShopJudgement,
   ShopKey,
   ShoppingItem,
+  ToolKey,
+  ToolLevel,
+  ToolUpgradeCheck,
 } from '../core';
 import {
   ACTIVITY_TYPE_LABELS,
@@ -18,16 +22,27 @@ import {
   DAY_START,
   LAST_START,
   MINUTE_STEP,
+  PICKUP_BAG_SLOT_REMINDER,
   ROBIN_WORKING_OPTIONS,
   SHOP_OPTIONS,
   STATE_LABELS,
+  TOOL_LEVEL_OPTIONS,
+  TOOL_OPTIONS,
+  TOOL_UPGRADE_PHASE_LABELS,
   TOWN_KEY_OPTIONS,
   activityStateKeys,
+  canDeliverTool,
+  canPickupTool,
+  earliestPickupDate,
+  formatDate,
   formatDuration,
   formatTime,
   judgeShop,
   parseChecklist,
   systemReserve,
+  toolLabel,
+  toolUpgradeOffer,
+  toolUpgradePhase,
 } from '../core';
 import { ShopAvailabilityList } from './ShopAvailability';
 import { ShoppingListEditor } from './ShoppingListEditor';
@@ -37,6 +52,8 @@ type Props = {
   currentDay: GameDate;
   playerStates: PlayerStates;
   preferences: ReservePreferences;
+  /** 当前正在升级或待取回的工具；后台等待，不占用日程时间。 */
+  toolUpgrade: PendingToolUpgrade | null;
   onPatch: (patch: ActivityPatch) => void;
   onSaveDefault: (activityType: ActivityType, minutes: number) => void;
   onDelete: () => void;
@@ -57,6 +74,7 @@ export function Inspector({
   currentDay,
   playerStates,
   preferences,
+  toolUpgrade,
   onPatch,
   onSaveDefault,
   onDelete,
@@ -77,10 +95,28 @@ export function Inspector({
   const isTravel = activity.activityType === 'travel';
   const isSpot = activity.activityType === 'fishing' || activity.activityType === 'mining';
   const isShop = activity.activityType === 'shop';
+  const isToolGive = activity.activityType === 'toolGive';
+  const isToolTake = activity.activityType === 'toolTake';
   const shoppingList = details.shoppingList ?? [];
   const conditionKeys = isShop ? activityStateKeys(activity) : [];
   const judgement: ShopJudgement | null =
     isShop && details.shop ? judgeShop(details.shop, currentDay, playerStates) : null;
+  const tool = details.tool;
+  const currentToolLevel = tool ? playerStates.toolLevels?.[tool] : undefined;
+  let toolCheck: ToolUpgradeCheck | null = null;
+  if (isToolGive || isToolTake) {
+    if (!tool) {
+      toolCheck = { ok: false, reason: `先选择要${isToolGive ? '交付' : '取回'}的工具。` };
+    } else if (isToolGive) {
+      toolCheck = canDeliverTool(toolUpgrade, tool, currentToolLevel);
+    } else {
+      toolCheck = canPickupTool(toolUpgrade, tool, currentDay, playerStates);
+    }
+  }
+  const toolBlocked = toolCheck !== null && !toolCheck.ok && !activity.protection.completed;
+  const blacksmithJudgement = isToolGive || isToolTake
+    ? judgeShop('blacksmith', currentDay, playerStates)
+    : null;
 
   function patchDetails(key: 'from' | 'to' | 'place' | 'target', value: string) {
     onPatch({ details: { ...details, [key]: value } });
@@ -88,6 +124,10 @@ export function Inspector({
 
   function patchShoppingList(next: ShoppingItem[]) {
     onPatch({ details: { ...details, shoppingList: next } });
+  }
+
+  function selectTool(next: ToolKey | undefined) {
+    onPatch({ details: { ...details, tool: next } });
   }
 
   return (
@@ -125,6 +165,30 @@ export function Inspector({
           onSelectShop={(shop) => onPatch({ details: { ...details, shop } })}
           onChangeShoppingList={patchShoppingList}
           onSetState={onSetState}
+        />
+      ) : null}
+
+      {isToolGive ? (
+        <ToolGiveInspector
+          tool={tool}
+          currentLevel={currentToolLevel}
+          currentDay={currentDay}
+          playerStates={playerStates}
+          toolUpgrade={toolUpgrade}
+          judgement={blacksmithJudgement}
+          onSelectTool={selectTool}
+          onSetState={onSetState}
+        />
+      ) : null}
+
+      {isToolTake ? (
+        <ToolTakeInspector
+          tool={tool}
+          toolUpgrade={toolUpgrade}
+          currentDay={currentDay}
+          playerStates={playerStates}
+          judgement={blacksmithJudgement}
+          onSelectTool={selectTool}
         />
       ) : null}
 
@@ -200,9 +264,19 @@ export function Inspector({
       )}
 
       <label className="check-row">
-        <input type="checkbox" checked={activity.protection.completed} onChange={(event) => onToggleCompleted(event.target.checked)} />
+        <input
+          type="checkbox"
+          checked={activity.protection.completed}
+          disabled={toolBlocked}
+          onChange={(event) => onToggleCompleted(event.target.checked)}
+        />
         已完成
       </label>
+      {toolBlocked && toolCheck && !toolCheck.ok ? (
+        <p className="hint warn" data-testid="tool-block-reason">
+          {toolCheck.reason}
+        </p>
+      ) : null}
       <p className="hint">
         时长解析：当前手填值 ＞ 个人默认
         {personal === undefined ? '（未设置）' : ` ${formatDuration(personal)}`} ＞ 最近一次预留
@@ -347,6 +421,167 @@ function ShopInspector({
       ) : null}
 
       <ShoppingListEditor items={shoppingList} onChange={onChangeShoppingList} />
+    </>
+  );
+}
+
+function toolLevelLabel(level: ToolLevel): string {
+  return TOOL_LEVEL_OPTIONS.find((option) => option.value === level)?.label ?? level;
+}
+
+/** 工具升级交付与取回共用的工具选择。 */
+function ToolSelect({
+  value,
+  onSelect,
+}: {
+  value?: ToolKey;
+  onSelect: (tool: ToolKey | undefined) => void;
+}) {
+  return (
+    <label>
+      工具
+      <select
+        data-field="tool"
+        value={value ?? ''}
+        onChange={(event) => onSelect((event.target.value || undefined) as ToolKey | undefined)}
+      >
+        <option value="">未选择</option>
+        {TOOL_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** 工具升级交付：工具、当前等级、目标等级、材料、费用与铁匠铺柜台条件。 */
+function ToolGiveInspector({
+  tool,
+  currentLevel,
+  currentDay,
+  playerStates,
+  toolUpgrade,
+  judgement,
+  onSelectTool,
+  onSetState,
+}: {
+  tool?: ToolKey;
+  currentLevel?: ToolLevel;
+  currentDay: GameDate;
+  playerStates: PlayerStates;
+  toolUpgrade: PendingToolUpgrade | null;
+  judgement: ShopJudgement | null;
+  onSelectTool: (tool: ToolKey | undefined) => void;
+  onSetState: (command: PlayerStateCommand) => void;
+}) {
+  const offer = tool && currentLevel ? toolUpgradeOffer(tool, currentLevel) : null;
+  return (
+    <>
+      <ToolSelect value={tool} onSelect={onSelectTool} />
+
+      {tool ? (
+        <label>
+          当前等级
+          <select
+            data-field="state-tool-level"
+            value={currentLevel ?? ''}
+            onChange={(event) =>
+              onSetState({
+                kind: 'setToolLevel',
+                tool,
+                level: (event.target.value || undefined) as ToolLevel | undefined,
+              })
+            }
+          >
+            <option value="">未填写</option>
+            {TOOL_LEVEL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+
+      {offer ? (
+        <div className="tool-upgrade-panel" data-testid="tool-upgrade-offer">
+          <span>目标等级：{toolLevelLabel(offer.targetLevel)}</span>
+          <span>材料：{offer.materials.map((item) => `${item.name} ×${item.count}`).join('、')}</span>
+          <span>费用：{offer.cost.toLocaleString()}g</span>
+        </div>
+      ) : tool && currentLevel ? (
+        <p className="hint">{toolLabel(tool)}已经是最高等级，没有可升级的目标。</p>
+      ) : tool ? (
+        <p className="hint">填写当前等级后显示目标等级、材料与费用。</p>
+      ) : null}
+
+      {toolUpgrade ? (
+        <p className="hint warn" data-testid="tool-in-progress">
+          {toolLabel(toolUpgrade.tool)}正在升级流程中（
+          {TOOL_UPGRADE_PHASE_LABELS[toolUpgradePhase(toolUpgrade, currentDay)]}，完成日
+          {formatDate(toolUpgrade.completesOn)}，最早可取回
+          {formatDate(earliestPickupDate(toolUpgrade.completesOn, playerStates))}）；同一时间只能升级一件工具。
+        </p>
+      ) : null}
+
+      {judgement ? (
+        <div className="shop-panel">
+          <span className="state-name">柜台条件（铁匠铺）</span>
+          <ShopAvailabilityList judgement={judgement} />
+        </div>
+      ) : null}
+      <p className="hint">计划交付本身不改变工具状态；标记完成后才进入升级中。</p>
+    </>
+  );
+}
+
+/** 工具取回：关联升级中的工具，显示完成日、最早取回日与背包空位提醒。 */
+function ToolTakeInspector({
+  tool,
+  toolUpgrade,
+  currentDay,
+  playerStates,
+  judgement,
+  onSelectTool,
+}: {
+  tool?: ToolKey;
+  toolUpgrade: PendingToolUpgrade | null;
+  currentDay: GameDate;
+  playerStates: PlayerStates;
+  judgement: ShopJudgement | null;
+  onSelectTool: (tool: ToolKey | undefined) => void;
+}) {
+  const matchingUpgrade = tool && toolUpgrade && toolUpgrade.tool === tool ? toolUpgrade : null;
+  return (
+    <>
+      <ToolSelect value={tool} onSelect={onSelectTool} />
+
+      {matchingUpgrade ? (
+        <div className="tool-upgrade-panel" data-testid="tool-upgrade-status">
+          <span>目标等级：{toolLevelLabel(matchingUpgrade.targetLevel)}</span>
+          <span>状态：{TOOL_UPGRADE_PHASE_LABELS[toolUpgradePhase(matchingUpgrade, currentDay)]}</span>
+          <span>完成日：{formatDate(matchingUpgrade.completesOn)}（交付日 +2 天，节日不顺延）</span>
+          <span>最早可取回：{formatDate(earliestPickupDate(matchingUpgrade.completesOn, playerStates))}</span>
+        </div>
+      ) : toolUpgrade ? (
+        <p className="hint">升级中的是{toolLabel(toolUpgrade.tool)}，请选择对应工具后取回。</p>
+      ) : (
+        <p className="hint">当前没有升级中的工具可供取回。</p>
+      )}
+
+      <p className="hint" data-testid="tool-bag-reminder">
+        {PICKUP_BAG_SLOT_REMINDER}
+      </p>
+      <p className="hint">完成取回后才更新工具等级；此前工具不在手中。</p>
+
+      {judgement ? (
+        <div className="shop-panel">
+          <span className="state-name">柜台条件（铁匠铺）</span>
+          <ShopAvailabilityList judgement={judgement} />
+        </div>
+      ) : null}
     </>
   );
 }

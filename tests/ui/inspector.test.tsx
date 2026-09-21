@@ -8,9 +8,11 @@ import type {
   ActivityPatch,
   ActivityType,
   GameDate,
+  PendingToolUpgrade,
   PlayerStateCommand,
   PlayerStates,
 } from '../../src/core';
+import { createPendingToolUpgrade } from '../../src/core';
 import { Inspector } from '../../src/ui/Inspector';
 import { makeActivity } from '../helpers';
 
@@ -47,6 +49,7 @@ function renderInspector(
     onPatch?: (patch: ActivityPatch) => void;
     onSaveDefault?: (activityType: ActivityType, minutes: number) => void;
     onSetState?: (command: PlayerStateCommand) => void;
+    toolUpgrade?: PendingToolUpgrade | null;
   } = {},
 ) {
   mount(
@@ -55,6 +58,7 @@ function renderInspector(
       currentDay={overrides.currentDay ?? WEDNESDAY}
       playerStates={overrides.playerStates ?? {}}
       preferences={overrides.preferences ?? { personal: {}, last: {} }}
+      toolUpgrade={overrides.toolUpgrade ?? null}
       onPatch={overrides.onPatch ?? (() => {})}
       onSaveDefault={overrides.onSaveDefault ?? (() => {})}
       onDelete={() => {}}
@@ -266,5 +270,97 @@ describe('检查器：购物活动的门店判定', () => {
   it('购物活动不显示通用文本清单', () => {
     renderInspector(shopActivity());
     expect(container.querySelector('[data-field="checklist"]')).toBeNull();
+  });
+});
+
+describe('检查器：工具升级交付与取回', () => {
+  function giveActivity(details: Activity['details'] = {}) {
+    return makeActivity({ id: 'give', start: 600, duration: 60, activityType: 'toolGive', details });
+  }
+
+  function takeActivity(details: Activity['details'] = {}) {
+    return makeActivity({ id: 'take', start: 600, duration: 60, activityType: 'toolTake', details });
+  }
+
+  it('交付活动显示目标等级、材料与费用', () => {
+    renderInspector(giveActivity({ tool: 'axe' }), {
+      playerStates: { toolLevels: { axe: 'copper' } },
+    });
+    const offer = container.querySelector('[data-testid="tool-upgrade-offer"]');
+    expect(offer?.textContent).toContain('目标等级：钢');
+    expect(offer?.textContent).toContain('铁锭 ×5');
+    expect(offer?.textContent).toContain('费用');
+  });
+
+  it('垃圾桶费用减半', () => {
+    renderInspector(giveActivity({ tool: 'trash' }), {
+      playerStates: { toolLevels: { trash: 'basic' } },
+    });
+    expect(container.querySelector('[data-testid="tool-upgrade-offer"]')?.textContent).toContain(
+      '1,000g',
+    );
+  });
+
+  it('选择工具与就地填写当前等级都会写回应用层', () => {
+    const onPatch = vi.fn<(patch: ActivityPatch) => void>();
+    const onSetState = vi.fn<(command: PlayerStateCommand) => void>();
+    renderInspector(giveActivity(), { onPatch, onSetState });
+    choose(container.querySelector<HTMLSelectElement>('[data-field="tool"]')!, 'axe');
+    expect(onPatch).toHaveBeenCalledWith({ details: { tool: 'axe' } });
+
+    renderInspector(giveActivity({ tool: 'axe' }), { onSetState });
+    choose(container.querySelector<HTMLSelectElement>('[data-field="state-tool-level"]')!, 'steel');
+    expect(onSetState).toHaveBeenCalledWith({ kind: 'setToolLevel', tool: 'axe', level: 'steel' });
+  });
+
+  it('取回活动显示完成日、最早可取回日期与背包空位提醒', () => {
+    const upgrade = createPendingToolUpgrade('axe', 'copper', WEDNESDAY)!;
+    renderInspector(takeActivity({ tool: 'axe' }), {
+      toolUpgrade: upgrade,
+      playerStates: { communityCenter: 'restored' },
+    });
+    const status = container.querySelector('[data-testid="tool-upgrade-status"]');
+    expect(status?.textContent).toContain('完成日');
+    expect(status?.textContent).toContain('最早可取回');
+    expect(status?.textContent).toContain('第 1 年 春 6 日'); // D+2 周五关闭，顺延到周六
+    expect(container.querySelector('[data-testid="tool-bag-reminder"]')?.textContent).toContain(
+      '背包空位',
+    );
+  });
+
+  it('上一件完成取回前再次交付：完成勾选被禁用并说明原因', () => {
+    const upgrade = createPendingToolUpgrade('pickaxe', 'basic', WEDNESDAY)!;
+    renderInspector(giveActivity({ tool: 'axe' }), {
+      toolUpgrade: upgrade,
+      playerStates: { toolLevels: { axe: 'copper' } },
+    });
+    const checkbox = container.querySelector<HTMLInputElement>('.check-row input')!;
+    expect(checkbox.disabled).toBe(true);
+    expect(container.querySelector('[data-testid="tool-block-reason"]')?.textContent).toContain(
+      '只能升级一件工具',
+    );
+  });
+});
+
+describe('检查器：交付后的完成日与最早可取回日期', () => {
+  it('交付活动给出 D+2 完成日与最早可取回日期', () => {
+    const upgrade = createPendingToolUpgrade('axe', 'copper', WEDNESDAY)!;
+    renderInspector(
+      makeActivity({
+        id: 'give',
+        start: 600,
+        duration: 60,
+        activityType: 'toolGive',
+        details: { tool: 'axe' },
+      }),
+      {
+        toolUpgrade: upgrade,
+        playerStates: { toolLevels: { axe: 'steel' }, communityCenter: 'restored' },
+      },
+    );
+    const text = container.querySelector('[data-testid="tool-in-progress"]')?.textContent ?? '';
+    expect(text).toContain('完成日');
+    expect(text).toContain('最早可取回');
+    expect(text).toContain('第 1 年 春 6 日');
   });
 });

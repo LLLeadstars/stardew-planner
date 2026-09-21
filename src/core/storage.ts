@@ -4,7 +4,7 @@ import type { GameMode, PlannerState } from './planner';
 import { isPlannerState } from './validate';
 
 /** 当前存档格式版本。未来格式版本一律拒绝，已知旧格式在此迁移。 */
-export const STORAGE_VERSION = 5;
+export const STORAGE_VERSION = 6;
 
 export type StoredDocument = {
   version: number;

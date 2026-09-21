@@ -1,0 +1,35 @@
+{
+  "version": 5,
+  "state": {
+    "currentDay": { "year": 1, "season": 0, "day": 3 },
+    "mode": "single",
+    "activities": [
+      {
+        "identity": { "kind": "manual", "id": "shop" },
+        "activityType": "shop",
+        "name": "皮埃尔杂货铺",
+        "start": 540,
+        "duration": 60,
+        "protection": { "editedByPlayer": false, "completed": false },
+        "details": {
+          "shop": "pierre",
+          "shoppingList": [{ "name": "防风草种子", "quantity": "10" }]
+        }
+      },
+      {
+        "identity": { "kind": "manual", "id": "give" },
+        "activityType": "toolGive",
+        "name": "交付斧头",
+        "start": 600,
+        "duration": 60,
+        "protection": { "editedByPlayer": false, "completed": false }
+      }
+    ],
+    "reserves": { "personal": { "shop": 50 }, "last": { "shop": 60 } },
+    "playerStates": {
+      "weather": "sunny",
+      "communityCenter": "notRestored",
+      "toolLevels": { "axe": "copper" }
+    }
+  }
+}

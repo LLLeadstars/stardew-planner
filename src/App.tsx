@@ -145,6 +145,7 @@ export function App() {
           currentDay={state.currentDay}
           playerStates={state.playerStates}
           preferences={state.reserves}
+          toolUpgrade={state.toolUpgrade}
           onPatch={handlePatch}
           onSaveDefault={handleSaveDefault}
           onDelete={handleDelete}

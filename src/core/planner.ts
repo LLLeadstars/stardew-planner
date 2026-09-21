@@ -5,6 +5,8 @@ import type { PlayerStates } from './playerState';
 import type { PlayerStateCommand } from './playerState';
 import type { ReservePreferences } from './reserve';
 import { emptyReservePreferences, resolveReserve, withLastReserve, withPersonalReserve } from './reserve';
+import { canDeliverTool, canPickupTool, createPendingToolUpgrade } from './toolUpgrade';
+import type { PendingToolUpgrade } from './toolUpgrade';
 import { clampDuration, clampStart } from './time';
 import type { GameMinutes } from './time';
 
@@ -22,6 +24,8 @@ export type PlannerState = {
   reserves: ReservePreferences;
   /** 按需记录、影响内置信息与提醒的玩家状态与今天前提。 */
   playerStates: PlayerStates;
+  /** 当前正在升级或待取回的工具；后台等待，不占用日程时间。 */
+  toolUpgrade: PendingToolUpgrade | null;
 };
 
 export type ActivityPatch = {
@@ -62,6 +66,7 @@ export function createPlannerState(day: GameDate, mode: GameMode): PlannerState 
     activities: [],
     reserves: emptyReservePreferences(),
     playerStates: {},
+    toolUpgrade: null,
   };
 }
 
@@ -119,14 +124,61 @@ export function reducePlanner(state: PlannerState, command: PlannerCommand): Pla
       };
     }
     case 'toggleActivityCompleted': {
-      return {
-        ...state,
-        activities: state.activities.map((activity) => {
-          if (identityKey(activity.identity) !== command.key) return activity;
-          const completed = command.completed ?? !activity.protection.completed;
-          return { ...activity, protection: { ...activity.protection, completed } };
-        }),
-      };
+      const target = state.activities.find(
+        (activity) => identityKey(activity.identity) === command.key,
+      );
+      if (!target) return state;
+      const completed = command.completed ?? !target.protection.completed;
+      const wasCompleted = target.protection.completed;
+      const withFlag = (base: PlannerState): PlannerState => ({
+        ...base,
+        activities: base.activities.map((activity) =>
+          identityKey(activity.identity) === command.key
+            ? { ...activity, protection: { ...activity.protection, completed } }
+            : activity,
+        ),
+      });
+
+      // 工具升级交付：只有从未完成变为完成时才把工具推入升级中；被拒绝时完全不动。
+      if (target.activityType === 'toolGive' && completed && !wasCompleted) {
+        const tool = target.details?.tool;
+        if (!tool) return state;
+        const currentLevel = state.playerStates.toolLevels?.[tool];
+        if (!canDeliverTool(state.toolUpgrade, tool, currentLevel).ok || !currentLevel) return state;
+        const pending = createPendingToolUpgrade(tool, currentLevel, state.currentDay);
+        if (!pending) return state;
+        return withFlag({ ...state, toolUpgrade: pending });
+      }
+
+      // 撤销已完成交付：如果正是该工具在升级，一并取消升级事实。
+      if (target.activityType === 'toolGive' && !completed && wasCompleted) {
+        const tool = target.details?.tool;
+        const base =
+          state.toolUpgrade && tool && state.toolUpgrade.tool === tool
+            ? { ...state, toolUpgrade: null }
+            : state;
+        return withFlag(base);
+      }
+
+      // 工具取回：完成后才更新工具等级并结束这次升级。
+      if (target.activityType === 'toolTake' && completed && !wasCompleted) {
+        const tool = target.details?.tool;
+        if (!tool || !state.toolUpgrade) return state;
+        if (!canPickupTool(state.toolUpgrade, tool, state.currentDay, state.playerStates).ok) {
+          return state;
+        }
+        const pending = state.toolUpgrade;
+        return withFlag({
+          ...state,
+          toolUpgrade: null,
+          playerStates: {
+            ...state.playerStates,
+            toolLevels: { ...state.playerStates.toolLevels, [pending.tool]: pending.targetLevel },
+          },
+        });
+      }
+
+      return withFlag(state);
     }
     case 'savePersonalReserve': {
       return {

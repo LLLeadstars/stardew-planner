@@ -50,3 +50,27 @@ export function weekdayOf(date: GameDate): Weekday {
   const index = (date.season * DAYS_PER_SEASON + (date.day - 1)) % WEEKDAYS.length;
   return WEEKDAYS[index]!;
 }
+
+/** 把游戏日期压成一个从 0 开始的绝对序数，用于比较与加减天数。 */
+export function dateOrdinal(date: GameDate): number {
+  return ((date.year - 1) * 4 + date.season) * DAYS_PER_SEASON + (date.day - 1);
+}
+
+export function fromOrdinal(ordinal: number): GameDate {
+  const perYear = 4 * DAYS_PER_SEASON;
+  const year = Math.floor(ordinal / perYear) + 1;
+  const rest = ordinal % perYear;
+  const season = Math.floor(rest / DAYS_PER_SEASON) as Season;
+  const day = (rest % DAYS_PER_SEASON) + 1;
+  return { year, season, day };
+}
+
+/** 按日历推进：每季 28 天，跨季自动进位，跨年回到春 1 日。 */
+export function addDays(date: GameDate, days: number): GameDate {
+  return fromOrdinal(dateOrdinal(date) + days);
+}
+
+/** 比较两个游戏日期：负数表示 a 在前，0 表示同一天，正数表示 a 在后。 */
+export function compareDate(a: GameDate, b: GameDate): number {
+  return dateOrdinal(a) - dateOrdinal(b);
+}

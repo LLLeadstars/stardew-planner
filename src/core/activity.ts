@@ -1,5 +1,6 @@
 import type { GameDate } from './date';
 import { dateKey, isGameDate } from './date';
+import type { ToolKey } from './playerState';
 import type { ShopKey } from './shop';
 import type { GameMinutes } from './time';
 
@@ -93,7 +94,7 @@ export type ShoppingItem = {
 };
 
 /**
- * 赶路与钓鱼/采矿的当次补充信息。
+ * 赶路、钓鱼/采矿与工具升级的当次补充信息。
  * 工具只用它显示与留档：不估算路线，也不把目标当成产出承诺。
  * 购物活动用 shop 与 shoppingList 记录门店与购物清单。
  */
@@ -110,6 +111,8 @@ export type ActivityDetails = {
   shop?: ShopKey;
   /** 购物清单项，可自由增删。 */
   shoppingList?: ShoppingItem[];
+  /** 工具升级交付/取回针对的工具。 */
+  tool?: ToolKey;
 };
 
 export type Activity = {

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import {
   MINUTE_STEP,
   SHOP_OPTIONS,
+  TOOL_OPTIONS,
   activityTypeLabel,
   formatDuration,
   parseChecklist,
@@ -15,6 +16,7 @@ import type {
   ReservePreferences,
   ShopKey,
   ShoppingItem,
+  ToolKey,
 } from '../core';
 import { ShoppingListEditor } from './ShoppingListEditor';
 
@@ -50,6 +52,7 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
   const isTravel = activityType === 'travel';
   const isSpot = activityType === 'fishing' || activityType === 'mining';
   const isShop = activityType === 'shop';
+  const isTool = activityType === 'toolGive' || activityType === 'toolTake';
 
   const [name, setName] = useState('');
   const [duration, setDuration] = useState(prefill.minutes);
@@ -61,6 +64,7 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
   const [place, setPlace] = useState('');
   const [target, setTarget] = useState('');
   const [shop, setShop] = useState<ShopKey | ''>('');
+  const [tool, setTool] = useState<ToolKey | ''>('');
   const [shoppingRows, setShoppingRows] = useState<ShoppingItem[]>([{ name: '', quantity: '' }]);
 
   function submit(event: FormEvent) {
@@ -78,6 +82,7 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
 
   function buildDetails(): ActivityDetails | undefined {
     if (isShop) return buildShopDetails();
+    if (isTool) return tool ? { tool } : undefined;
     if (isTravel) return compact({ from, to });
     if (isSpot) return compact({ place, target });
     return undefined;
@@ -174,6 +179,24 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
           </>
         ) : null}
 
+        {isTool ? (
+          <label>
+            工具
+            <select
+              data-field="tool"
+              value={tool}
+              onChange={(event) => setTool(event.target.value as ToolKey | '')}
+            >
+              <option value="">未选择</option>
+              {TOOL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+
         {isSpot ? (
           <>
             <label>
@@ -227,6 +250,12 @@ export function AddActivityDialog({ activityType, preferences, onCancel, onSubmi
         </p>
         {isTravel ? <p className="hint">工具不估算路线；根据地点估算移动耗时属后续范围。</p> : null}
         {isSpot ? <p className="hint">V1 不估算产出或达成目标的时间。</p> : null}
+        {activityType === 'toolGive' ? (
+          <p className="hint">完成日固定为交付日 +2 天；计划交付本身不改变工具状态，标记完成后才进入升级中。</p>
+        ) : null}
+        {activityType === 'toolTake' ? (
+          <p className="hint">完成取回后才更新工具等级；取回前请留出至少一个背包空位。</p>
+        ) : null}
         <div className="modal-actions">
           <button type="button" className="ghost" onClick={onCancel}>
             取消

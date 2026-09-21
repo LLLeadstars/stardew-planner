@@ -13,21 +13,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * v1 没有活动类型与预留偏好，且当时只能创建自定义活动；
  * v2 已有活动类型与预留偏好，但还没有备注、清单与当次信息；
  * v3 已有当次信息，但还没有玩家状态与今天前提；
- * v4 已有玩家状态，但购物活动还没有门店与购物清单项。
+ * v4 已有玩家状态，但购物活动还没有门店与购物清单项；
+ * v5 已有购物门店与购物清单项，但还没有工具升级状态。
  * 迁移后仍走一次当前版本的完整校验，避免把半成品状态放进来。
  */
 export function migrateState(version: number, state: unknown): PlannerState | null {
   if (version === 1) return migrateV1(state);
-  if (version === 2 || version === 3 || version === 4) return withEmptyPlayerStates(state);
+  if (version === 2 || version === 3 || version === 4 || version === 5) {
+    return withUpgradeDefaults(state);
+  }
   return null;
 }
 
-/** v2/v3/v4 都缺后续版本才引入的可选字段；补齐 playerStates 后再走当前校验。 */
-function withEmptyPlayerStates(state: unknown): PlannerState | null {
+/** v2～v5 都缺后续版本才引入的可选字段；补齐 playerStates 与 toolUpgrade 后再走当前校验。 */
+function withUpgradeDefaults(state: unknown): PlannerState | null {
   if (!isRecord(state)) return null;
   const candidate = {
     ...state,
     playerStates: isRecord(state.playerStates) ? state.playerStates : {},
+    toolUpgrade: state.toolUpgrade === undefined ? null : state.toolUpgrade,
   };
   return isPlannerState(candidate) ? candidate : null;
 }
@@ -56,6 +60,7 @@ function migrateV1(state: unknown): PlannerState | null {
     activities,
     reserves: emptyReservePreferences(),
     playerStates: {},
+    toolUpgrade: null,
   };
   return isPlannerState(migrated) ? migrated : null;
 }

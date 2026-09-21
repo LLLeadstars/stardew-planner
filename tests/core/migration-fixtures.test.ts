@@ -67,4 +67,17 @@ describe('旧格式夹具迁移', () => {
     expect(result.state.activities[1]?.details).toEqual({ place: '铁匠铺' });
     expect(result.preview.playerStateCount).toBe(3); // weather + communityCenter + axe 等级
   });
+
+  it('v5 夹具保留购物门店与清单，并补上空的工具升级状态', () => {
+    const result = inspectBackup(fixture('storage-v5.json'));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.version).toBe(5);
+    expect(result.state.toolUpgrade).toBeNull();
+    expect(result.state.activities[0]?.details).toEqual({
+      shop: 'pierre',
+      shoppingList: [{ name: '防风草种子', quantity: '10' }],
+    });
+    expect(result.state.playerStates.toolLevels).toEqual({ axe: 'copper' });
+  });
 });
