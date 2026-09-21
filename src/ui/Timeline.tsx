@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import type { DragEvent, ReactNode } from 'react';
-import type { Activity, DropTarget, SwapDirection } from '../core';
+import type { Activity, DropTarget, PlayerStates, SwapDirection } from '../core';
 import {
   DAY_END,
   activityRange,
+  activityStateSummary,
   formatDuration,
   formatTime,
   freeGaps,
@@ -19,6 +20,7 @@ const GAP_MIN_PX = 18;
 
 type Props = {
   activities: Activity[];
+  playerStates: PlayerStates;
   selectedKey: string | null;
   onSelect: (key: string) => void;
   onMove: (key: string, start: number) => void;
@@ -29,7 +31,7 @@ type Props = {
  * 融合的单时间列：按开始时刻定位的活动卡片之间，用空白表达空闲并标注时长。
  * 拖动只在三个离散落点之间切换预览，落点时刻在放下时才提交，因此连续拖动不会产生中间时刻。
  */
-export function Timeline({ activities, selectedKey, onSelect, onMove, onSwap }: Props) {
+export function Timeline({ activities, playerStates, selectedKey, onSelect, onMove, onSwap }: Props) {
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const [compactGaps, setCompactGaps] = useState(false);
@@ -108,6 +110,7 @@ export function Timeline({ activities, selectedKey, onSelect, onMove, onSwap }: 
         onDragEnd={cancelDrag}
         overlaps={overlapsOf(activity, activities)}
         group={groups.get(identityKey(activity.identity))}
+        stateSummary={activityStateSummary(activity, playerStates)}
       />,
     );
   }
@@ -172,6 +175,7 @@ function ActivityCard({
   onDragEnd,
   overlaps,
   group,
+  stateSummary,
 }: {
   activity: Activity;
   selected: boolean;
@@ -186,6 +190,7 @@ function ActivityCard({
   onDragEnd: () => void;
   overlaps: ReturnType<typeof overlapsOf>;
   group?: number;
+  stateSummary: string | null;
 }) {
   const key = identityKey(activity.identity);
   const range = activityRange(activity);
@@ -239,6 +244,11 @@ function ActivityCard({
           {overlaps.map((overlap) => <span className="overlap" key={identityKey(overlap.activity.identity)}>{overlap.relation === 'contains' ? `包含：${overlap.activity.name}` : overlap.relation === 'contained-by' ? `被包含：${overlap.activity.name}` : `同时进行 · 重叠 ${formatDuration(overlap.minutes)}：${overlap.activity.name}`}</span>)}
           {detailSummary(activity) ? (
             <span className="card-detail">{detailSummary(activity)}</span>
+          ) : null}
+          {stateSummary ? (
+            <span className="card-state" data-testid="activity-state-summary">
+              {stateSummary}
+            </span>
           ) : null}
         </span>
         {over > 0 ? <span className="tag warn">超出游戏日 {formatDuration(over)}</span> : null}

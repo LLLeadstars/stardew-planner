@@ -29,13 +29,14 @@ function withManual(
 }
 
 describe('日程 reducer', () => {
-  it('创建初始状态：当前游戏日、模式与空活动表', () => {
+  it('创建初始状态：当前游戏日、模式、空活动表与空玩家状态', () => {
     const state = createPlannerState(day, 'single');
     expect(state).toEqual({
       currentDay: day,
       mode: 'single',
       activities: [],
       reserves: { personal: {}, last: {} },
+      playerStates: {},
     });
   });
 

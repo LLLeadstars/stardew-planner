@@ -3,7 +3,7 @@ import type { PlannerState } from './planner';
 import { isPlannerState } from './validate';
 
 /** 当前存档格式版本。未来格式版本一律拒绝，已知旧格式在此迁移。 */
-export const STORAGE_VERSION = 3;
+export const STORAGE_VERSION = 4;
 
 export type StoredDocument = {
   version: number;

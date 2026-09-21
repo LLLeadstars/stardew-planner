@@ -1,6 +1,15 @@
 import type { Activity, ActivityDetails, ActivityType, Checklist, Protection } from './activity';
 import { isActivityIdentity, isActivityType } from './activity';
 import { isGameDate } from './date';
+import {
+  COMMUNITY_CENTER_OPTIONS,
+  SPECIAL_DAY_OPTIONS,
+  TOOL_LEVEL_OPTIONS,
+  TOOL_OPTIONS,
+  TOWN_KEY_OPTIONS,
+  WEATHER_OPTIONS,
+} from './playerState';
+import type { PlayerStates, ToolLevels } from './playerState';
 import type { PlannerState } from './planner';
 import type { ReservePreferences } from './reserve';
 import { DAY_START, LAST_START, MINUTE_STEP } from './time';
@@ -66,6 +75,32 @@ function isReservePreferences(value: unknown): value is ReservePreferences {
   return isRecord(value) && isReserveMap(value.personal) && isReserveMap(value.last);
 }
 
+function isOptionValue<T extends string>(
+  options: readonly { value: T }[],
+  value: unknown,
+): value is T {
+  return typeof value === 'string' && options.some((option) => option.value === value);
+}
+
+function isToolLevels(value: unknown): value is ToolLevels {
+  if (!isRecord(value)) return false;
+  return Object.entries(value).every(
+    ([tool, level]) => isOptionValue(TOOL_OPTIONS, tool) && isOptionValue(TOOL_LEVEL_OPTIONS, level),
+  );
+}
+
+function isPlayerStates(value: unknown): value is PlayerStates {
+  if (!isRecord(value)) return false;
+  return (
+    (value.weather === undefined || isOptionValue(WEATHER_OPTIONS, value.weather)) &&
+    (value.specialDay === undefined || isOptionValue(SPECIAL_DAY_OPTIONS, value.specialDay)) &&
+    (value.communityCenter === undefined ||
+      isOptionValue(COMMUNITY_CENTER_OPTIONS, value.communityCenter)) &&
+    (value.townKey === undefined || isOptionValue(TOWN_KEY_OPTIONS, value.townKey)) &&
+    (value.toolLevels === undefined || isToolLevels(value.toolLevels))
+  );
+}
+
 export function isPlannerState(value: unknown): value is PlannerState {
   if (!isRecord(value)) return false;
   return (
@@ -73,6 +108,7 @@ export function isPlannerState(value: unknown): value is PlannerState {
     (value.mode === 'single' || value.mode === 'multi') &&
     Array.isArray(value.activities) &&
     value.activities.every(isActivity) &&
-    isReservePreferences(value.reserves)
+    isReservePreferences(value.reserves) &&
+    isPlayerStates(value.playerStates)
   );
 }

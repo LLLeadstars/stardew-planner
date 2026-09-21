@@ -25,7 +25,7 @@ afterEach(() => {
   container.remove();
 });
 
-function mount(activities: ReturnType<typeof makeActivity>[]) {
+function mount(activities: ReturnType<typeof makeActivity>[], playerStates = {}) {
   const onMove = vi.fn();
   const onSwap = vi.fn();
   const onSelect = vi.fn();
@@ -33,6 +33,7 @@ function mount(activities: ReturnType<typeof makeActivity>[]) {
     root.render(
       <Timeline
         activities={activities}
+        playerStates={playerStates}
         selectedKey={null}
         onSelect={onSelect}
         onMove={onMove}
@@ -68,6 +69,31 @@ describe('时间轴卡片渲染与交换', () => {
         ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(onSwap).toHaveBeenCalledWith(identityKey({ kind: 'manual', id: 'a' }), 'down');
+  });
+});
+
+describe('活动卡片上的玩家状态摘要', () => {
+  it('购物卡片显示依赖状态的当前取值，状态修改后随之更新', () => {
+    mount([makeActivity({ id: 'shop', start: 540, duration: 60, activityType: 'shop' })], {});
+    expect(container.textContent).toContain('社区中心状态：未填写 · 城镇钥匙：未填写');
+    act(() => {
+      root.render(
+        <Timeline
+          activities={[makeActivity({ id: 'shop', start: 540, duration: 60, activityType: 'shop' })]}
+          playerStates={{ communityCenter: 'restored', townKey: 'no' }}
+          selectedKey={null}
+          onSelect={() => {}}
+          onMove={() => {}}
+          onSwap={() => {}}
+        />,
+      );
+    });
+    expect(container.textContent).toContain('社区中心状态：已修复 · 城镇钥匙：未持有');
+  });
+
+  it('不依赖玩家状态的卡片没有摘要行', () => {
+    mount([makeActivity({ id: 'a', start: 360, duration: 60, activityType: 'custom' })]);
+    expect(container.querySelector('[data-testid="activity-state-summary"]')).toBeNull();
   });
 });
 

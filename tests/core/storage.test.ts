@@ -119,6 +119,28 @@ describe('当次信息（备注、清单、赶路/钓鱼/采矿字段）', () =>
   });
 });
 
+describe('玩家状态与今天前提的存档', () => {
+  it('往返后保留玩家状态与天气/特殊日', () => {
+    let state = createPlannerState(day, 'single');
+    state = reducePlanner(state, { kind: 'setWeather', value: 'rain' });
+    state = reducePlanner(state, { kind: 'setSpecialDay', value: 'festival' });
+    state = reducePlanner(state, { kind: 'setCommunityCenter', value: 'restored' });
+    state = reducePlanner(state, { kind: 'setToolLevel', tool: 'can', level: 'copper' });
+    expect(deserializeState(serializeState(state))).toEqual({ ok: true, state });
+  });
+
+  it('拒绝未知的玩家状态取值', () => {
+    const parsed = JSON.parse(serializeState(sampleState())) as {
+      state: { playerStates: Record<string, unknown> };
+    };
+    parsed.state.playerStates = { weather: 'snow' };
+    expect(deserializeState(JSON.stringify({ version: STORAGE_VERSION, state: parsed.state }))).toEqual({
+      ok: false,
+      reason: 'corrupt',
+    });
+  });
+});
+
 const LEGACY_ACTIVITY = {
   identity: { kind: 'manual', id: 'a' },
   name: '看电视',
@@ -126,6 +148,25 @@ const LEGACY_ACTIVITY = {
   duration: 10,
   protection: { editedByPlayer: false, completed: false },
 };
+
+describe('旧格式（v3）迁移', () => {
+  it('v3 存档补上空的玩家状态', () => {
+    const legacy = JSON.stringify({
+      version: 3,
+      state: {
+        currentDay: day,
+        mode: 'single',
+        activities: [{ ...LEGACY_ACTIVITY, activityType: 'custom' }],
+        reserves: { personal: {}, last: {} },
+      },
+    });
+    const result = deserializeState(legacy);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.state.playerStates).toEqual({});
+    expect(result.state.activities[0]?.activityType).toBe('custom');
+  });
+});
 
 describe('旧格式（v1）迁移', () => {
   it('v1 存档补上活动类型与空的预留偏好', () => {

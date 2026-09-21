@@ -11,13 +11,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * 已知旧格式的迁移入口。
  * v1 没有活动类型与预留偏好，且当时只能创建自定义活动；
- * v2 已有活动类型与预留偏好，但还没有备注、清单与当次信息。
+ * v2 已有活动类型与预留偏好，但还没有备注、清单与当次信息；
+ * v3 已有当次信息，但还没有玩家状态与今天前提。
  * 迁移后仍走一次当前版本的完整校验，避免把半成品状态放进来。
  */
 export function migrateState(version: number, state: unknown): PlannerState | null {
   if (version === 1) return migrateV1(state);
-  if (version === 2) return isPlannerState(state) ? state : null;
+  if (version === 2 || version === 3) return withEmptyPlayerStates(state);
   return null;
+}
+
+/** v2/v3 都没有 playerStates；补齐空对象后再走当前校验。 */
+function withEmptyPlayerStates(state: unknown): PlannerState | null {
+  if (!isRecord(state)) return null;
+  const candidate = {
+    ...state,
+    playerStates: isRecord(state.playerStates) ? state.playerStates : {},
+  };
+  return isPlannerState(candidate) ? candidate : null;
 }
 
 function migrateV1(state: unknown): PlannerState | null {
@@ -43,6 +54,7 @@ function migrateV1(state: unknown): PlannerState | null {
     mode: state.mode as GameMode,
     activities,
     reserves: emptyReservePreferences(),
+    playerStates: {},
   };
   return isPlannerState(migrated) ? migrated : null;
 }

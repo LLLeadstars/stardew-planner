@@ -173,6 +173,46 @@ h2 {
   color: var(--warn);
 }
 
+.left label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.left select {
+  font: inherit;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+.state-row {
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+}
+
+.state-name {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 8px;
+}
+
+.tool-level {
+  margin-bottom: 0 !important;
+}
+
 .card {
   display: flex;
   align-items: center;
@@ -279,6 +319,11 @@ h2 {
 .card-detail {
   color: var(--muted);
   font-size: 12px;
+}
+
+.card-state {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .tag {

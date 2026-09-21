@@ -1,6 +1,8 @@
 import type { Activity, ActivityDetails, ActivityIdentity, ActivityType, Checklist } from './activity';
 import { identityKey } from './activity';
 import type { GameDate } from './date';
+import type { PlayerStates } from './playerState';
+import type { PlayerStateCommand } from './playerState';
 import type { ReservePreferences } from './reserve';
 import { emptyReservePreferences, resolveReserve, withLastReserve, withPersonalReserve } from './reserve';
 import { clampDuration, clampStart } from './time';
@@ -18,6 +20,8 @@ export type PlannerState = {
   mode: GameMode;
   activities: Activity[];
   reserves: ReservePreferences;
+  /** 按需记录、影响内置信息与提醒的玩家状态与今天前提。 */
+  playerStates: PlayerStates;
 };
 
 export type ActivityPatch = {
@@ -48,10 +52,17 @@ export type PlannerCommand =
   | { kind: 'editActivity'; key: string; patch: ActivityPatch }
   | { kind: 'toggleActivityCompleted'; key: string; completed?: boolean }
   | { kind: 'deleteActivity'; key: string }
-  | { kind: 'savePersonalReserve'; activityType: ActivityType; minutes: number };
+  | { kind: 'savePersonalReserve'; activityType: ActivityType; minutes: number }
+  | PlayerStateCommand;
 
 export function createPlannerState(day: GameDate, mode: GameMode): PlannerState {
-  return { currentDay: day, mode, activities: [], reserves: emptyReservePreferences() };
+  return {
+    currentDay: day,
+    mode,
+    activities: [],
+    reserves: emptyReservePreferences(),
+    playerStates: {},
+  };
 }
 
 /**
@@ -123,7 +134,40 @@ export function reducePlanner(state: PlannerState, command: PlannerCommand): Pla
         reserves: withPersonalReserve(state.reserves, command.activityType, command.minutes),
       };
     }
+    case 'setWeather':
+      return withPlayerStates(state, setStateValue(state.playerStates, 'weather', command.value));
+    case 'setSpecialDay':
+      return withPlayerStates(state, setStateValue(state.playerStates, 'specialDay', command.value));
+    case 'setCommunityCenter':
+      return withPlayerStates(
+        state,
+        setStateValue(state.playerStates, 'communityCenter', command.value),
+      );
+    case 'setTownKey':
+      return withPlayerStates(state, setStateValue(state.playerStates, 'townKey', command.value));
+    case 'setToolLevel': {
+      const toolLevels = { ...state.playerStates.toolLevels };
+      if (command.level === undefined) delete toolLevels[command.tool];
+      else toolLevels[command.tool] = command.level;
+      return withPlayerStates(state, { ...state.playerStates, toolLevels });
+    }
   }
+}
+
+function withPlayerStates(state: PlannerState, playerStates: PlayerStates): PlannerState {
+  return { ...state, playerStates };
+}
+
+/** 写入或清空一个玩家状态；清空时不留下值为 undefined 的键。 */
+function setStateValue<K extends keyof PlayerStates>(
+  states: PlayerStates,
+  key: K,
+  value: PlayerStates[K],
+): PlayerStates {
+  const next: PlayerStates = { ...states };
+  if (value === undefined) delete next[key];
+  else next[key] = value;
+  return next;
 }
 
 function applyPatch(activity: Activity, patch: ActivityPatch): Activity {

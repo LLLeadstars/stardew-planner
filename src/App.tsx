@@ -99,14 +99,18 @@ export function App() {
         <LeftPanel
           currentDay={state.currentDay}
           mode={state.mode}
+          activities={activities}
+          playerStates={state.playerStates}
           activityCount={activities.length}
           gapCount={gaps.length}
           overrunCount={overrunCount}
           collapsed={leftCollapsed}
           onToggle={() => setLeftCollapsed((value) => !value)}
+          onSetState={dispatch}
         />
         <Timeline
           activities={activities}
+          playerStates={state.playerStates}
           selectedKey={selectedKey}
           onSelect={setSelectedKey}
           onMove={handleMove}
