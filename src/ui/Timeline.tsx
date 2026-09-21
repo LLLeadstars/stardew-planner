@@ -7,6 +7,8 @@ import {
   formatDuration,
   formatTime,
   freeGaps,
+  overlapsOf,
+  conflictGroupKeys,
   identityKey,
   resolveDropStart,
   sortedActivities,
@@ -30,9 +32,11 @@ type Props = {
 export function Timeline({ activities, selectedKey, onSelect, onMove, onSwap }: Props) {
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  const [compactGaps, setCompactGaps] = useState(false);
 
   const sorted = sortedActivities(activities);
   const gaps = freeGaps(activities);
+  const groups = conflictGroupKeys(activities);
   const dragging = draggingKey
     ? activities.find((activity) => identityKey(activity.identity) === draggingKey) ?? null
     : null;
@@ -71,6 +75,7 @@ export function Timeline({ activities, selectedKey, onSelect, onMove, onSwap }: 
           event.preventDefault();
           commitDrop({ kind: 'gap', start: gap.start });
         }}
+        compact={compactGaps}
       />,
     );
   }
@@ -101,6 +106,8 @@ export function Timeline({ activities, selectedKey, onSelect, onMove, onSwap }: 
         onDragOver={(side) => setDropTarget({ kind: side, key: identityKey(activity.identity) })}
         onDrop={(side) => commitDrop({ kind: side, key: identityKey(activity.identity) })}
         onDragEnd={cancelDrag}
+        overlaps={overlapsOf(activity, activities)}
+        group={groups.get(identityKey(activity.identity))}
       />,
     );
   }
@@ -114,6 +121,7 @@ export function Timeline({ activities, selectedKey, onSelect, onMove, onSwap }: 
       <div className="panel-head">
         <h2>今日日程</h2>
         <span className="hint">纵向位置＝开始时刻 · 空白＝空闲 · 拖动落到三个离散位置 · ↑↓ 交换相邻开始时刻</span>
+        <button type="button" className="ghost" onClick={() => setCompactGaps((value) => !value)}>{compactGaps ? '真实比例留白' : '紧凑留白'}</button>
       </div>
       {rows.length ? rows : <div className="empty">这一天还没有活动。点「＋ 添加」开始。</div>}
     </main>
@@ -126,19 +134,22 @@ function GapRow({
   canDrop,
   onDragOver,
   onDrop,
+  compact,
 }: {
   minutes: number;
   highlighted: boolean;
   canDrop: boolean;
   onDragOver: (event: DragEvent<HTMLDivElement>) => void;
   onDrop: (event: DragEvent<HTMLDivElement>) => void;
+  compact: boolean;
 }) {
-  const height = Math.max(GAP_MIN_PX, minutes * PX_PER_MINUTE);
+  const height = compact ? 30 : Math.max(GAP_MIN_PX, minutes * PX_PER_MINUTE);
   return (
     <div
       className={`gap${highlighted ? ' drop-target' : ''}`}
       style={{ height }}
       data-testid="gap"
+      title={compact ? `实际空闲 ${formatDuration(minutes)}` : undefined}
       onDragOver={onDragOver}
       onDrop={onDrop}
     >
@@ -159,6 +170,8 @@ function ActivityCard({
   onDragOver,
   onDrop,
   onDragEnd,
+  overlaps,
+  group,
 }: {
   activity: Activity;
   selected: boolean;
@@ -171,6 +184,8 @@ function ActivityCard({
   onDragOver: (side: 'before' | 'after') => void;
   onDrop: (side: 'before' | 'after') => void;
   onDragEnd: () => void;
+  overlaps: ReturnType<typeof overlapsOf>;
+  group?: number;
 }) {
   const key = identityKey(activity.identity);
   const range = activityRange(activity);
@@ -220,6 +235,8 @@ function ActivityCard({
           <span className="card-meta">
             {formatTime(range.start)} – {formatTime(range.end)} · {formatDuration(activity.duration)}
           </span>
+          {group !== undefined && overlaps.length > 0 ? <span className="tag warn">冲突组 {group}</span> : null}
+          {overlaps.map((overlap) => <span className="overlap" key={identityKey(overlap.activity.identity)}>{overlap.relation === 'contains' ? `包含：${overlap.activity.name}` : overlap.relation === 'contained-by' ? `被包含：${overlap.activity.name}` : `同时进行 · 重叠 ${formatDuration(overlap.minutes)}：${overlap.activity.name}`}</span>)}
         </span>
         {over > 0 ? <span className="tag warn">超出游戏日 {formatDuration(over)}</span> : null}
       </button>

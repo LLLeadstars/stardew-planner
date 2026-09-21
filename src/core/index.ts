@@ -42,8 +42,8 @@ export {
 } from './reserve';
 export type { DurationSource, ReservePreferences, ResolvedReserve } from './reserve';
 
-export { activityRange, sortedActivities, freeGaps, overruns, firstFreeStart } from './schedule';
-export type { Range, Gap, Overrun } from './schedule';
+export { activityRange, sortedActivities, freeGaps, overruns, firstFreeStart, overlapsOf, conflictGroupKeys } from './schedule';
+export type { Range, Gap, Overrun, Overlap, OverlapRelation } from './schedule';
 
 export { resolveDropStart, swapAdjacentStarts } from './move';
 export type { DropTarget, SwapDirection, StartPatch } from './move';

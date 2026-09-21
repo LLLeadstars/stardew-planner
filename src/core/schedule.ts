@@ -17,9 +17,38 @@ export type Overrun = {
   activity: Activity;
   minutes: number;
 };
+export type OverlapRelation = 'contains' | 'contained-by' | 'partial';
+export type Overlap = { activity: Activity; minutes: number; relation: OverlapRelation };
 
 export function activityRange(activity: Activity): Range {
   return { start: activity.start, end: endOf(activity.start, activity.duration) };
+}
+
+export function overlapsOf(activity: Activity, activities: readonly Activity[]): Overlap[] {
+  const range = activityRange(activity);
+  return sortedActivities(activities).flatMap((other) => {
+    if (identityKey(other.identity) === identityKey(activity.identity)) return [];
+    const otherRange = activityRange(other);
+    const minutes = Math.min(range.end, otherRange.end) - Math.max(range.start, otherRange.start);
+    if (minutes <= 0) return [];
+    const relation: OverlapRelation = range.start <= otherRange.start && range.end >= otherRange.end
+      ? 'contains' : otherRange.start <= range.start && otherRange.end >= range.end ? 'contained-by' : 'partial';
+    return [{ activity: other, minutes, relation }];
+  });
+}
+
+export function conflictGroupKeys(activities: readonly Activity[]): Map<string, number> {
+  const sorted = sortedActivities(activities);
+  const parent = sorted.map((_, i) => i);
+  const find = (i: number): number => parent[i] === i ? i : (parent[i] = find(parent[i]!));
+  for (let i = 0; i < sorted.length; i += 1) for (let j = i + 1; j < sorted.length; j += 1) {
+    const a = activityRange(sorted[i]!); const b = activityRange(sorted[j]!);
+    if (b.start >= a.end) break;
+    if (Math.min(a.end, b.end) > Math.max(a.start, b.start)) parent[find(j)] = find(i);
+  }
+  const ids = new Map<number, number>(); const result = new Map<string, number>(); let next = 1;
+  sorted.forEach((activity, i) => { const root = find(i); if (!ids.has(root)) ids.set(root, next++); result.set(identityKey(activity.identity), ids.get(root)!); });
+  return result;
 }
 
 /** 按开始时刻排列；列表顺序不是独立状态，同时刻项以身份稳定排序。 */
